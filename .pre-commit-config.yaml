@@ -1,24 +1,24 @@
 repos:
   - repo: https://github.com/ambv/black
-    rev: stable
+    rev: 24.4.2
     hooks:
       - id: black
         language_version: python3.8
 
   - repo: https://github.com/timothycrosley/isort
-    rev: 5.5.4
+    rev: 5.13.2
     hooks:
       - id: isort
         language_version: python3.8
 
-  - repo: https://gitlab.com/pycqa/flake8
-    rev: 3.8.4
+  - repo: https://github.com/PyCQA/flake8
+    rev: 7.0.0
     hooks:
       - id: flake8
         language_version: python3.8
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v3.2.0
+    rev: v4.5.0
     hooks:
       - id: check-yaml
         language_version: python3.8
