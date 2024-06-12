@@ -1,21 +1,20 @@
 import glob
 import json
-import open3d as o3d
-from datetime import datetime
 from pathlib import Path
-from tqdm import tqdm
+from typing import Optional
 
 import numpy as np
-import pandas as pd
+import open3d as o3d
 import pytorch_lightning as pl
 from natsort import natsorted
 from torch.utils.data import DataLoader, Dataset
 from torchvision.transforms import v2
-from typing import Optional
+from tqdm import tqdm
+
+from .transforms.centering import Center
+from .transforms.cropping import Crop
 from .transforms.normalizing import Normalize
 from .transforms.resampling import Resample3DCurve
-from .transforms.cropping import Crop
-from .transforms.centering import Center
 
 TRANSFORMS = {
     "ToTensor": v2.ToTensor,
@@ -59,8 +58,8 @@ class SpineDataModule(pl.LightningDataModule):
             val_indices (Optional[list], optional): _description_. Defaults to None.
             test_indices (Optional[list], optional): _description_. Defaults to None.
             n_subjects (Optional[float], optional): _description_. Defaults to None.
-        """        
-        
+        """
+
         super().__init__()
         self.data_dir = Path(data_dir)
         self.batch_size = batch_size
@@ -71,7 +70,7 @@ class SpineDataModule(pl.LightningDataModule):
         self.val_indices = val_indices
         self.test_indices = test_indices
         self.transform_args = transform_args
-        self.data = {"backscans": {},"metadata" : {}}
+        self.data = {"backscans": {}, "metadata": {}}
         self.n_subjects = n_subjects
 
     def setup(self, stage: Optional[str]):
@@ -96,12 +95,8 @@ class SpineDataModule(pl.LightningDataModule):
         metadata_dir = str(self.data_dir / "**" / f"*processed.json")
 
         # making every path string a Path object is useful for cross-OS compatibility
-        self.dirs_backscan = [
-            Path(path) for path in natsorted(glob.glob(backscan_dir))
-        ]
-        self.dirs_metadata = [
-            Path(path) for path in natsorted(glob.glob(metadata_dir))
-        ]
+        self.dirs_backscan = [Path(path) for path in natsorted(glob.glob(backscan_dir))]
+        self.dirs_metadata = [Path(path) for path in natsorted(glob.glob(metadata_dir))]
 
     def _load_data(self, file_ext: str, data_dirs: list):
         """_summary_
@@ -109,9 +104,9 @@ class SpineDataModule(pl.LightningDataModule):
         Args:
             file (str): _description_
             data_dirs (list): _description_
-        """        
+        """
         print(f"Loading {file_ext}...")
-        for path in tqdm(data_dirs[:self.n_subjects]):
+        for path in tqdm(data_dirs[: self.n_subjects]):
             unique_id = path.parts[-2]
             if path.suffix == ".ply":
                 self.data[file_ext][unique_id] = o3d.io.read_point_cloud(str(path))
@@ -120,15 +115,12 @@ class SpineDataModule(pl.LightningDataModule):
                     self.data[file_ext][unique_id] = json.load(f)
 
     def _check_split_args(self):
-        """_summary_
-        """
+        """_summary_"""
         fraction_args = [self.train_fraction, self.val_fraction, self.test_fraction]
         indices_args = [self.train_indices, self.val_indices, self.test_indices]
 
         fraction_bool = np.all([fraction is not None for fraction in fraction_args])
-        indices_bool = np.all(
-            [indices is not None for indices in indices_args]
-        )
+        indices_bool = np.all([indices is not None for indices in indices_args])
 
         msg = "Either fractions or indices should be provided, not both."
         assert np.xor(fraction_bool, indices_bool), msg
