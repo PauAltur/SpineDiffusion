@@ -1,7 +1,12 @@
+import glob
+import json
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pytorch_lightning as pl
+from natsort import natsorted
 from torch.utils.data import DataLoader, Dataset
 from torchvision.transforms import v2
 
@@ -28,6 +33,7 @@ class SpineDataModule(pl.LightningDataModule):
         val_indices: list | None,
         test_indices: list | None,
         transform_args: dict,
+        surface_rotation: bool,
     ):
         """_summary_
 
@@ -41,6 +47,7 @@ class SpineDataModule(pl.LightningDataModule):
             val_indices (list | None): _description_
             test_indices (list | None): _description_
             transform_args (dict): _description_
+            surface_rotation (bool): _description_
         """
         super().__init__()
         self.data_dir = data_dir
@@ -52,6 +59,7 @@ class SpineDataModule(pl.LightningDataModule):
         self.val_indices = val_indices
         self.test_indices = test_indices
         self.transform_args = transform_args
+        self.surface_rotation = surface_rotation
 
     def setup(self, stage: str | None):
         """_summary_
@@ -59,30 +67,98 @@ class SpineDataModule(pl.LightningDataModule):
         Args:
             stage (str | None): _description_
         """
-        self._load_data()
+        self._parse_datapaths()
+        self._load_metadata()
+        self._load_scandata()
         self._preprocess_data()
-        self._check_split_args(
-            [self.train_ratio, self.val_ratio, self.test_ratio],
-            [self.train_indices, self.val_indices, self.test_indices],
-        )
+        self._check_split_args()
         self._split_data()
 
-    def _load_data(self):
+    def _parse_datapaths(self):
         """_summary_"""
         assert Path(self.data_dir).exists(), "Data directory does not exist."
-        self.data = np.load(self.data_dir)
+        data_dir = Path(self.data_dir)
 
-    def _check_split_args(self, ratio_args, indices_args):
+        dirs_backscan = natsorted(
+            glob.glob(str(data_dir / "**/*_backscan.ply"))
+        )
+        dirs_metadata = natsorted(
+            glob.glob(str(data_dir / "**/*_metadata.json"))
+        )
+
+        self.metadata = pd.DataFrame(
+            list(zip(dirs_backscan, dirs_metadata)),
+            columns=['dirs_backscan', 'dirs_metadata']
+        )
+
+    def _load_metadata(self):
+        """_summary_"""
+        dirs_metadata = self.metadata['dirs_metadata'].tolist()
+
+        subject_idx = np.empty(len(dirs_metadata), dtype=object)
+        age_list = np.zeros(len(dirs_metadata), dtype=int)
+        gender = np.empty((len(dirs_metadata)), dtype=str)
+        rec_time = np.empty((len(dirs_metadata)), dtype=datetime)
+        esl = np.zeros(len(dirs_metadata), dtype=object)
+        isl = np.zeros(len(dirs_metadata), dtype=object)
+        fix_points = np.zeros(len(dirs_metadata), dtype=dict)
+        apex_points = np.zeros(len(dirs_metadata), dtype=object)
+        if self.surface_rotation:
+            surface_rotation = np.zeros(len(dirs_metadata), dtype=float)
+
+        for idx, dir in enumerate(dirs_metadata):
+            # Opening JSON file
+            f = open(dir)
+            data = json.load(f)
+
+            # some age entries are wrong, they need to be corrected
+            if isinstance(data['age'], str):
+                converted_date = datetime.strptime(data['age'], "%d.%m.%Y").year
+                year_diff = converted_date - 2000
+                age_list[idx] = year_diff
+            else:
+                age_list[idx] = data['age']
+
+            subject_idx[idx] = data['subject_index']
+            gender[idx] = data['gender']
+            rec_time[idx] = data['recording_datetime']
+            esl[idx] = np.array(data['esl_formetric'])
+            isl[idx] = np.array(data['isl_formetric'])
+            fix_points[idx] = data['fix_pts']
+            apex_points[idx] = data['apex_pts']
+            if self.surface_rotation:
+                surface_rotation[idx] = data['surface_rotation_rms_deg']
+
+            # Closing file
+            f.close()
+
+        # convert "w" to 0 and "m" to 1 in gender
+        gender_list = np.asarray([0 if x == "w" else 1 for x in gender])
+
+        self.metadata.insert(0, 'subject_id', subject_idx)
+        self.metadata = self.metadata.assign(gender=gender_list, age=age_list, rec_time=rec_time, esl=esl, isl=isl, fix_points=fix_points,
+                                apex_points=apex_points)
+
+        if self.surface_rotation:
+            self.metadata['surface_rotation'] = surface_rotation
+
+        self.metadata['rec_time'] = pd.to_datetime(self.metadata['rec_time'], format='%d-%b-%Y %H:%M:%S')
+    
+    def _load_scandata(self):
+        """_summary_"""
+        pass
+
+
+    def _check_split_args(self):
         """_summary_
-
-        Args:
-            ratio_args (_type_): _description_
-            indices_args (_type_): _description_
         """
+        ratio_args = [self.train_ratio, self.val_ratio, self.test_ratio]
+        indices_args = [self.train_indices, self.val_indices, self.test_indices]
+
         ratio_bool = np.all([ratio is not None for ratio in ratio_args])
         indices_bool = np.all(
             [indices is not None for indices in indices_args]
-        )  # noqa: E501
+        )
 
         msg = "Either ratios or indices should be provided, not both."
         assert np.xor(ratio_bool, indices_bool), msg
