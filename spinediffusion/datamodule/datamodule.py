@@ -11,17 +11,16 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision.transforms import v2
 from tqdm import tqdm
 
-from .transforms.centering import Center
-from .transforms.cropping import Crop
-from .transforms.normalizing import Normalize
-from .transforms.resampling import Resample3DCurve
+from .transforms.normalizing import ConstantNormalization, SpineLengthNormalization
+from .transforms.projecting import ProjectToPlane
+from .transforms.resampling import Resample3DCurve, ResamplePointCloud
 
 TRANSFORMS = {
-    "ToTensor": v2.ToTensor,
-    "Normalize": Normalize,
-    "Resample3DCurve": Resample3DCurve,
-    "Crop": Crop,
-    "Center": Center,
+    "constant_normalize": ConstantNormalization,
+    "spine_length_normalize": SpineLengthNormalization,
+    "resample_3d_curve": Resample3DCurve,
+    "project_to_plane": ProjectToPlane,
+    "resample_point_cloud": ResamplePointCloud,
 }
 
 
@@ -70,7 +69,9 @@ class SpineDataModule(pl.LightningDataModule):
         self.val_indices = val_indices
         self.test_indices = test_indices
         self.transform_args = transform_args
-        self.data = {"backscans": {}, "metadata": {}}
+        self.meta = {}
+        self.backs = {}
+        self.data = {}
         self.n_subjects = n_subjects
 
     def setup(self, stage: Optional[str]):
@@ -80,8 +81,8 @@ class SpineDataModule(pl.LightningDataModule):
             stage (str | None): _description_
         """
         self._parse_datapaths()
-        self._load_data("metadata", self.dirs_metadata)
-        self._load_data("backscans", self.dirs_backscan)
+        self._load_data()
+        self._reformat_data()
         self._preprocess_data()
         self._split_data()
 
@@ -91,28 +92,72 @@ class SpineDataModule(pl.LightningDataModule):
 
         assert self.data_dir.exists(), "Data directory does not exist."
 
-        backscan_dir = str(self.data_dir / "**" / f"*processed.ply")
-        metadata_dir = str(self.data_dir / "**" / f"*processed.json")
+        back_dir = str(self.data_dir / "**" / f"*processed.ply")
+        meta_dir = str(self.data_dir / "**" / f"*processed.json")
 
         # making every path string a Path object is useful for cross-OS compatibility
-        self.dirs_backscan = [Path(path) for path in natsorted(glob.glob(backscan_dir))]
-        self.dirs_metadata = [Path(path) for path in natsorted(glob.glob(metadata_dir))]
+        self.dirs_back = [Path(path) for path in natsorted(glob.glob(back_dir))]
+        self.dirs_meta = [Path(path) for path in natsorted(glob.glob(meta_dir))]
 
-    def _load_data(self, file_ext: str, data_dirs: list):
-        """_summary_
-
-        Args:
-            file (str): _description_
-            data_dirs (list): _description_
+    def _load_data(self):
+        """Loads both backscan point clouds and metadata from the data directories
+        found in _parse_datapaths().
         """
-        print(f"Loading {file_ext}...")
-        for path in tqdm(data_dirs[: self.n_subjects]):
-            unique_id = path.parts[-2]
-            if path.suffix == ".ply":
-                self.data[file_ext][unique_id] = o3d.io.read_point_cloud(str(path))
-            elif path.suffix == ".json":
-                with open(path, "r") as f:
-                    self.data[file_ext][unique_id] = json.load(f)
+        print(f"Loading data...")
+
+        # auxiliary selection for quick testing and debugging
+        back_paths = self.dirs_back[: self.n_subjects]
+        meta_paths = self.dirs_meta[: self.n_subjects]
+
+        for back_path, meta_path in tqdm(
+            zip(back_paths, meta_paths), total=len(back_paths)
+        ):
+
+            msg = (
+                f"Backscan and metadata files do not match: {back_path} and {meta_path}"
+            )
+            assert back_path.parent == meta_path.parent, msg
+
+            with open(meta_path, "r") as f:
+                meta_id = json.load(f)
+                unique_id = f"{meta_id['dataset']}_{meta_id['id']}"
+                self.meta[unique_id] = meta_id
+            self.backs[unique_id] = o3d.io.read_point_cloud(str(back_path))
+
+    def _reformat_data(self):
+        """_summary_"""
+        print("Reformatting data...")
+        for unique_id in tqdm(self.meta.keys()):
+            self.data[unique_id] = {}
+            self.data[unique_id]["backscan"] = self.backs[unique_id]
+            self.data[unique_id]["dataset"] = self.meta[unique_id]["dataset"]
+            self.data[unique_id]["id"] = self.meta[unique_id]["id"]
+            self.data[unique_id]["age"] = self.meta[unique_id]["age"]
+            self.data[unique_id]["gender"] = self.meta[unique_id]["gender"]
+            self.data[unique_id]["status"] = self.meta[unique_id]["status"]
+
+            # change from camelCase to snake_case for python conventions
+            self.data[unique_id]["pipeline_steps"] = self.meta[unique_id][
+                "pipelineSteps"
+            ].copy()
+            self.data[unique_id]["special_points"] = self.meta[unique_id][
+                "specialPts"
+            ].copy()
+
+            for point_id, point in self.data[unique_id]["special_points"].items():
+                self.data[unique_id]["special_points"][point_id] = np.asarray(point)
+
+            if self.data[unique_id]["dataset"] == "croatian":
+                pc_type = "formetric"
+            else:
+                pc_type = "pcdicomapp"
+
+            self.data[unique_id]["esl"] = np.asarray(
+                self.meta[unique_id]["esl"][pc_type]
+            )
+            self.data[unique_id]["isl"] = np.asarray(
+                self.meta[unique_id]["isl"][pc_type]
+            )
 
     def _check_split_args(self):
         """_summary_"""
