@@ -16,27 +16,26 @@ class ConstantNormalization(nn.Module):
         super().__init__()
         self.norm = norm
 
-    def forward(self, data) -> dict:
+    def forward(self, data_id: dict) -> dict:
         """Normalizes the data by the user-defined constant.
 
         Args:
-            data (dict): The data to normalize. Must have the keys
-            'backscan', 'esl', 'isl', and 'fix_points' which store
-            geometric data corresponding to point clouds (or lines).
+            data_id (dict): A single sample of the data to normalize.
+            Must have the keys 'backscan', 'esl', 'isl', and 'fix_points'
+            which store geometric data corresponding to point clouds (or lines).
 
         Returns:
-            data (dict): The normalized data.
+            data_id (dict): The normalized data sample.
         """
-        for unique_id, data_id in data.items():
-            data_id["backscan"].points = o3d.utility.Vector3dVector(
-                np.asarray(data_id["backscan"].points) / self.norm
-            )
-            data_id["esl"] = data_id["esl"] / self.norm
-            data_id["isl"] = data_id["isl"] / self.norm
-            for point_id, point in data_id["special_points"].items():
-                data_id["special_points"][point_id] = point / self.norm
+        data_id["backscan"].points = o3d.utility.Vector3dVector(
+            np.asarray(data_id["backscan"].points) / self.norm
+        )
+        data_id["esl"] = data_id["esl"] / self.norm
+        data_id["isl"] = data_id["isl"] / self.norm
+        for point_id, point in data_id["special_points"].items():
+            data_id["special_points"][point_id] = point / self.norm
 
-        return data
+        return data_id
 
 
 class SpineLengthNormalization(nn.Module):
@@ -51,26 +50,35 @@ class SpineLengthNormalization(nn.Module):
         super().__init__()
         self.norm_length = norm_length
 
-    def forward(self, data) -> dict:
-        for unique_id, data_id in data.items():
-            # Compute DM
-            C7 = data_id["special_points"]["C7"]
-            DR = data_id["special_points"]["DR"]
-            DL = data_id["special_points"]["DL"]
+    def forward(self, data_id: dict) -> dict:
+        """Normalizes the data so that the length of the spine is equal
+        to the user-defined norm_length.
 
-            DM = (DR + DL) / 2
+        Args:
+            data_id (dict): A single sample of the data to normalize.
+            Must have the keys 'backscan', 'esl', 'isl', and 'fix_points'
+            which store geometric data corresponding to point clouds (or lines).
 
-            # Compute normalization constant
-            spine_length = euclidean(C7, DM)
-            norm = spine_length / self.norm_length
+        Returns:
+            data_id (dict): The normalized data sample.
+        """
+        # Compute DM
+        C7 = data_id["special_points"]["C7"]
+        DR = data_id["special_points"]["DR"]
+        DL = data_id["special_points"]["DL"]
+        DM = (DR + DL) / 2
 
-            # Normalize the data
-            data_id["backscan"].points = o3d.utility.Vector3dVector(
-                np.asarray(data_id["backscan"].points) / norm
-            )
-            data_id["esl"] = data_id["esl"] / norm
-            data_id["isl"] = data_id["isl"] / norm
-            for point_id, point in data_id["special_points"].items():
-                data_id["special_points"][point_id] = point / norm
+        # Compute normalization constant
+        spine_length = euclidean(C7, DM)
+        norm = spine_length / self.norm_length
 
-        return data
+        # Normalize the data
+        data_id["backscan"].points = o3d.utility.Vector3dVector(
+            np.asarray(data_id["backscan"].points) / norm
+        )
+        data_id["esl"] = data_id["esl"] / norm
+        data_id["isl"] = data_id["isl"] / norm
+        for point_id, point in data_id["special_points"].items():
+            data_id["special_points"][point_id] = point / norm
+
+        return data_id

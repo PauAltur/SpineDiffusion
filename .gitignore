@@ -6,3 +6,7 @@
 
 # vscode
 **/.vscode/
+
+# cache data
+**/.cache/
+*.pt

@@ -1,19 +1,26 @@
 import glob
 import json
+import os
+import sys
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
 import open3d as o3d
 import pytorch_lightning as pl
+import torch
 from natsort import natsorted
 from torch.utils.data import DataLoader, Dataset
 from torchvision.transforms import v2
 from tqdm import tqdm
 
+from spinediffusion.datamodule.dataset import SpineDataset
+from spinediffusion.utils.hashing import hash_dict
+
 from .transforms.normalizing import ConstantNormalization, SpineLengthNormalization
 from .transforms.projecting import ProjectToPlane
 from .transforms.resampling import Resample3DCurve, ResamplePointCloud
+from .transforms.tensoring import Tensorize
 
 TRANSFORMS = {
     "constant_normalize": ConstantNormalization,
@@ -21,6 +28,14 @@ TRANSFORMS = {
     "resample_3d_curve": Resample3DCurve,
     "project_to_plane": ProjectToPlane,
     "resample_point_cloud": ResamplePointCloud,
+    "tensorize": Tensorize,
+}
+
+ARG_KEYS = {
+    "data_dir",
+    "batch_size",
+    "transform_args",
+    "n_subjects",
 }
 
 
@@ -39,10 +54,12 @@ class SpineDataModule(pl.LightningDataModule):
         train_fraction: Optional[float] = None,
         val_fraction: Optional[float] = None,
         test_fraction: Optional[float] = None,
-        train_indices: Optional[list] = None,
-        val_indices: Optional[list] = None,
-        test_indices: Optional[list] = None,
+        train_keys: Optional[list] = None,
+        val_keys: Optional[list] = None,
+        test_keys: Optional[list] = None,
         n_subjects: Optional[float] = None,
+        use_cache: bool = True,
+        cache_dir: str = "../../cache/",
     ):
         """_summary_
 
@@ -53,26 +70,27 @@ class SpineDataModule(pl.LightningDataModule):
             train_fraction (Optional[float], optional): _description_. Defaults to None.
             val_fraction (Optional[float], optional): _description_. Defaults to None.
             test_fraction (Optional[float], optional): _description_. Defaults to None.
-            train_indices (Optional[list], optional): _description_. Defaults to None.
-            val_indices (Optional[list], optional): _description_. Defaults to None.
-            test_indices (Optional[list], optional): _description_. Defaults to None.
+            train_keys (Optional[list], optional): _description_. Defaults to None.
+            val_keys (Optional[list], optional): _description_. Defaults to None.
+            test_keys (Optional[list], optional): _description_. Defaults to None.
             n_subjects (Optional[float], optional): _description_. Defaults to None.
         """
-
         super().__init__()
         self.data_dir = Path(data_dir)
         self.batch_size = batch_size
         self.train_fraction = train_fraction
         self.val_fraction = val_fraction
         self.test_fraction = test_fraction
-        self.train_indices = train_indices
-        self.val_indices = val_indices
-        self.test_indices = test_indices
+        self.train_keys = train_keys
+        self.val_keys = val_keys
+        self.test_keys = test_keys
         self.transform_args = transform_args
         self.meta = {}
         self.backs = {}
         self.data = {}
         self.n_subjects = n_subjects
+        self.use_cache = use_cache
+        self.cache_dir = Path(cache_dir)
 
     def setup(self, stage: Optional[str]):
         """_summary_
@@ -80,10 +98,19 @@ class SpineDataModule(pl.LightningDataModule):
         Args:
             stage (str | None): _description_
         """
-        self._parse_datapaths()
-        self._load_data()
-        self._reformat_data()
-        self._preprocess_data()
+        self._check_cache()
+
+        if self.cache_exists and self.use_cache:
+            print("Cache found for this parameter combination.")
+            self._load_cache()
+        else:
+            print("Cache not found or not used for this parameter combination.")
+            self._parse_datapaths()
+            self._load_data()
+            self._reformat_data()
+            self._preprocess_data()
+            self._save_cache()
+
         self._split_data()
 
     def _parse_datapaths(self):
@@ -98,6 +125,56 @@ class SpineDataModule(pl.LightningDataModule):
         # making every path string a Path object is useful for cross-OS compatibility
         self.dirs_back = [Path(path) for path in natsorted(glob.glob(back_dir))]
         self.dirs_meta = [Path(path) for path in natsorted(glob.glob(meta_dir))]
+
+    def _check_split_args(self):
+        """_summary_"""
+        fraction_args = [self.train_fraction, self.val_fraction, self.test_fraction]
+        keys_args = [self.train_keys, self.val_keys, self.test_keys]
+
+        fraction_bool = np.all([fraction is not None for fraction in fraction_args])
+        keys_bool = np.all([keys is not None for keys in keys_args])
+
+        msg = "Either fractions or keys should be provided, not both."
+        assert np.logical_xor(fraction_bool, keys_bool), msg
+
+        if fraction_bool:
+            msg = "Sum of fractions should be equal to 1."
+            assert np.sum(fraction_args) == 1, msg
+
+            data_keys = list(self.data.keys())
+            self.train_keys = list(
+                np.random.choice(
+                    data_keys,
+                    size=int(self.train_fraction * len(data_keys)),
+                    replace=False,
+                )
+            )
+            self.val_keys = list(
+                np.random.choice(
+                    np.setdiff1d(data_keys, self.train_keys),
+                    size=int(self.val_fraction * len(data_keys)),
+                    replace=False,
+                )
+            )
+            self.test_keys = list(
+                np.setdiff1d(
+                    data_keys,
+                    np.concatenate([self.train_keys, self.val_keys]),
+                )
+            )
+
+    def _check_cache(self):
+        """_summary_"""
+        print("Checking cache...")
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.cache_dict = {key: self.__dict__[key] for key in ARG_KEYS}
+        self.cache_file = self.cache_dir / f"{hash_dict(self.cache_dict)}.pt"
+        self.cache_exists = (self.cache_file).exists()
+
+    def _load_cache(self):
+        """_summary_"""
+        print(f"Loading cache from {self.cache_file}...")
+        self.data = torch.load(self.cache_file)
 
     def _load_data(self):
         """Loads both backscan point clouds and metadata from the data directories
@@ -159,35 +236,6 @@ class SpineDataModule(pl.LightningDataModule):
                 self.meta[unique_id]["isl"][pc_type]
             )
 
-    def _check_split_args(self):
-        """_summary_"""
-        fraction_args = [self.train_fraction, self.val_fraction, self.test_fraction]
-        indices_args = [self.train_indices, self.val_indices, self.test_indices]
-
-        fraction_bool = np.all([fraction is not None for fraction in fraction_args])
-        indices_bool = np.all([indices is not None for indices in indices_args])
-
-        msg = "Either fractions or indices should be provided, not both."
-        assert np.xor(fraction_bool, indices_bool), msg
-
-        if fraction_bool:
-            msg = "Sum of fractions should be equal to 1."
-            assert np.sum(fraction_args) == 1, msg
-            self.train_indices = np.random.choice(
-                np.arange(len(self.data)),
-                size=int(self.train_fraction * len(self.data)),
-                replace=False,
-            )
-            self.val_indices = np.random.choice(
-                np.setdiff1d(np.arange(len(self.data)), self.train_indices),
-                size=int(self.val_fraction * len(self.data)),
-                replace=False,
-            )
-            self.test_indices = np.setdiff1d(
-                np.arange(len(self.data)),
-                np.concatenate([self.train_indices, self.val_indices]),
-            )
-
     def _preprocess_data(self):
         """_summary_"""
         print("Preprocessing data...")
@@ -196,16 +244,26 @@ class SpineDataModule(pl.LightningDataModule):
             for key, value in self.transform_args.items():
                 if value["transform_number"] == i:
                     transforms.append(TRANSFORMS[key](**value))
+
         transforms = v2.Compose(transforms)
-        self.data = transforms(self.data)
+        # TODO: prettify print
+        print(transforms)
+
+        for unique_id in tqdm(self.data.keys()):
+            self.data[unique_id] = transforms(self.data[unique_id])
+
+    def _save_cache(self):
+        """_summary_"""
+        print(f"Saving cache to {self.cache_file}...")
+        torch.save(self.data, self.cache_file)
 
     def _split_data(self):
         """_summary_"""
         print("Splitting data...")
         self._check_split_args()
-        self.train_data = Dataset(self.data[self.train_indices])
-        self.val_data = Dataset(self.data[self.val_indices])
-        self.test_data = Dataset(self.data[self.test_indices])
+        self.train_data = SpineDataset({key: self.data[key] for key in self.train_keys})
+        self.val_data = SpineDataset({key: self.data[key] for key in self.train_keys})
+        self.test_data = SpineDataset({key: self.data[key] for key in self.train_keys})
 
     def train_dataloader(self):
         """_summary_
