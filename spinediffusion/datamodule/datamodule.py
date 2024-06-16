@@ -31,7 +31,7 @@ TRANSFORMS = {
     "tensorize": Tensorize,
 }
 
-ARG_KEYS = {
+HASH_ARGS = {
     "data_dir",
     "batch_size",
     "transform_args",
@@ -40,10 +40,15 @@ ARG_KEYS = {
 
 
 class SpineDataModule(pl.LightningDataModule):
-    """_summary_
-
-    Args:
-        pl (_type_): _description_
+    """Data module for the 3D backscan dataset of the Laboratory for
+    Movement Biomechanics at D-HEST ETH Zurich. This dataset is composed
+    of four different subdatasets coming from different medical centers
+    that are exploring the use of 3D backscans as an alternative for the
+    diagnosis and monitoring of scoliosis. To learn more about the dataset,
+    please refer to the following sources:
+        - Source 1
+        - Source 2
+        - Source 3
     """
 
     def __init__(
@@ -61,19 +66,30 @@ class SpineDataModule(pl.LightningDataModule):
         use_cache: bool = True,
         cache_dir: str = "../../cache/",
     ):
-        """_summary_
+        """Constructor for the SpineDataModule class.
 
         Args:
-            data_dir (str): _description_
-            batch_size (int): _description_
-            transform_args (dict): _description_
-            train_fraction (Optional[float], optional): _description_. Defaults to None.
-            val_fraction (Optional[float], optional): _description_. Defaults to None.
-            test_fraction (Optional[float], optional): _description_. Defaults to None.
-            train_keys (Optional[list], optional): _description_. Defaults to None.
-            val_keys (Optional[list], optional): _description_. Defaults to None.
-            test_keys (Optional[list], optional): _description_. Defaults to None.
-            n_subjects (Optional[float], optional): _description_. Defaults to None.
+            data_dir (str): The root directory of the dataset.
+            batch_size (int): The batch size for the training dataloader.
+            transform_args (dict): A dictionary containing the arguments for the
+                data preprocessing transforms. For more information on the available
+                transforms, please refer to the README.md in the transforms subdirectory.
+            train_fraction (Optional[float], optional): The fraction of the dataset to
+                use as a training set. Defaults to None.
+            val_fraction (Optional[float], optional):  The fraction of the dataset to
+                use as a validation set. Defaults to None.
+            test_fraction (Optional[float], optional):  The fraction of the dataset to
+                use as a test set. Defaults to None.
+            train_keys (Optional[list], optional): The exact keys of the samples to use
+                as a training set. The keys have the format dataset_id. Defaults to None.
+            val_keys (Optional[list], optional): The exact keys of the samples to use
+                as a validation set. The keys have the format dataset_id. Defaults to None.
+            test_keys (Optional[list], optional): The exact keys of the samples to use
+                as a test set. The keys have the format dataset_id. Defaults to None.
+            n_subjects (Optional[float], optional): The number of subjects to load from the
+                dataset. Defaults to None, which loads all.
+            use_cache (bool, optional): Whether to use the cache if it exists. Defaults to True.
+            cache_dir (str, optional): The directory to save the cache. Defaults to "../../cache/".
         """
         super().__init__()
         self.data_dir = Path(data_dir)
@@ -93,10 +109,12 @@ class SpineDataModule(pl.LightningDataModule):
         self.cache_dir = Path(cache_dir)
 
     def setup(self, stage: Optional[str]):
-        """_summary_
+        """Setup method for the SpineDataModule class. This method is called
+        by PyTorch Lightning to setup the data module before training.
 
         Args:
-            stage (str | None): _description_
+            stage (str | None): The stage of the training process. Can be "fit",
+                "validate", "test", or None. Defaults to None.
         """
         self._check_cache()
 
@@ -114,7 +132,13 @@ class SpineDataModule(pl.LightningDataModule):
         self._split_data()
 
     def _parse_datapaths(self):
-        """_summary_"""
+        """Parses the data paths from the data directory.
+
+        The data directory should contain two subdirectories: one for the backscans
+        and one for the metadata. The backscans should be stored as .ply files and
+        the metadata as .json files. The backscans and metadata files should have
+        the same name, with the only difference being the file extension.
+        """
         print(f"Parsing data paths from {self.data_dir}...")
 
         assert self.data_dir.exists(), "Data directory does not exist."
@@ -126,8 +150,149 @@ class SpineDataModule(pl.LightningDataModule):
         self.dirs_back = [Path(path) for path in natsorted(glob.glob(back_dir))]
         self.dirs_meta = [Path(path) for path in natsorted(glob.glob(meta_dir))]
 
+    def _check_cache(self):
+        """Checks if a cache exists for the current parameter combination."""
+        print("Checking cache...")
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.cache_dict = {key: self.__dict__[key] for key in HASH_ARGS}
+        self.cache_file = self.cache_dir / f"{hash_dict(self.cache_dict)}.pt"
+        self.cache_exists = (self.cache_file).exists()
+
+    def _load_cache(self):
+        """Loads the cache from the cache file."""
+        print(f"Loading cache from {self.cache_file}...")
+        self.data = torch.load(self.cache_file)
+
+    def _load_data(self):
+        """Loads both backscan point clouds and metadata from the data directories
+        found in _parse_datapaths().
+        """
+        print(f"Loading data...")
+
+        # auxiliary selection for quick testing and debugging
+        back_paths = self.dirs_back[: self.n_subjects]
+        meta_paths = self.dirs_meta[: self.n_subjects]
+
+        for back_path, meta_path in tqdm(
+            zip(back_paths, meta_paths), total=len(back_paths)
+        ):
+
+            msg = (
+                f"Backscan and metadata files do not match: {back_path} and {meta_path}"
+            )
+            assert back_path.parent == meta_path.parent, msg
+
+            with open(meta_path, "r") as f:
+                meta_id = json.load(f)
+                unique_id = f"{meta_id['dataset']}_{meta_id['id']}"
+                self.meta[unique_id] = meta_id
+            self.backs[unique_id] = o3d.io.read_point_cloud(str(back_path))
+
+    def _reformat_data(self):
+        """Reformats the data into a more convenient structure for the rest of the pipeline.
+
+        Each sample is stored as a dictionary with the following keys:
+        - backscan: the backscan point cloud
+        - dataset: the dataset the sample belongs to
+        - id: the unique identifier of the sample
+        - age: the age of the patient
+        - gender: the gender of the patient
+        - status: the status of the patient
+        - pipeline_steps: the pipeline steps applied to the backscan
+        - special_points: the special points of the backscan
+        - esl: the external spinal line
+        - isl: the internal spinal line
+
+        All samples are stored in self.data as a dictionary with the unique_id as the key.
+        """
+        print("Reformatting data...")
+        for unique_id in tqdm(self.meta.keys()):
+            self.data[unique_id] = {}
+            self.data[unique_id]["backscan"] = self.backs[unique_id]
+            self.data[unique_id]["dataset"] = self.meta[unique_id]["dataset"]
+            self.data[unique_id]["id"] = self.meta[unique_id]["id"]
+            self.data[unique_id]["age"] = self.meta[unique_id]["age"]
+            self.data[unique_id]["gender"] = self.meta[unique_id]["gender"]
+            self.data[unique_id]["status"] = self.meta[unique_id]["status"]
+
+            # change from camelCase to snake_case for python conventions
+            self.data[unique_id]["pipeline_steps"] = self.meta[unique_id][
+                "pipelineSteps"
+            ].copy()
+            self.data[unique_id]["special_points"] = self.meta[unique_id][
+                "specialPts"
+            ].copy()
+
+            for point_id, point in self.data[unique_id]["special_points"].items():
+                self.data[unique_id]["special_points"][point_id] = np.asarray(point)
+
+            if self.data[unique_id]["dataset"] == "croatian":
+                pc_type = "formetric"
+            else:
+                pc_type = "pcdicomapp"
+
+            self.data[unique_id]["esl"] = np.asarray(
+                self.meta[unique_id]["esl"][pc_type]
+            )
+            self.data[unique_id]["isl"] = np.asarray(
+                self.meta[unique_id]["isl"][pc_type]
+            )
+
+    def _preprocess_data(self):
+        """Preprocesses the data using the transforms provided in the transform_args dictionary.
+
+        The transforms are applied order according to the transform_number key in the transform_args
+        dictionary. The transforms are then composed into a single transform using torchvision.transforms.Compose.
+        """
+        print("Preprocessing data...")
+        transforms = []
+        for i in range(len(self.transform_args)):
+            for key, value in self.transform_args.items():
+                if value["transform_number"] == i:
+                    transforms.append(TRANSFORMS[key](**value))
+
+        transforms = v2.Compose(transforms)
+        # TODO: prettify print
+        print(transforms)
+        for unique_id in tqdm(self.data.keys()):
+            self.data[unique_id] = transforms(self.data[unique_id])
+
+    def _save_cache(self):
+        """Saves the data to a cache file for future use. The cache file is saved in the cache directory
+        with the name being the hash of the cache_dict.
+
+        The cache_dict is a dictionary containing the following keys:
+        - data_dir: the root directory of the dataset
+        - batch_size: the batch size for the training dataloader
+        - transform_args: the arguments for the data preprocessing transforms
+        - n_subjects: the number of subjects to load from the dataset
+
+        The cache file is saved using torch.save as a .pt file.
+        """
+        print(f"Saving cache to {self.cache_file}...")
+        torch.save(self.data, self.cache_file)
+
+    def _split_data(self):
+        """Splits the data into training, validation, and test sets according to the provided fractions
+        or keys. The data is split into three SpineDataset objects: train_data, val_data, and test_data.
+
+        The train_data, val_data, and test_data objects are then used to create the training, validation,
+        and test dataloaders, respectively.
+        """
+        print("Splitting data...")
+        self._check_split_args()
+        self.train_data = SpineDataset({key: self.data[key] for key in self.train_keys})
+        self.val_data = SpineDataset({key: self.data[key] for key in self.train_keys})
+        self.test_data = SpineDataset({key: self.data[key] for key in self.train_keys})
+
     def _check_split_args(self):
-        """_summary_"""
+        """Checks the arguments for splitting the data into training, validation, and test sets. In case
+        fractions are provided, the data is split randomly.
+
+        Raises:
+            AssertionError: If both fractions and keys are provided, or if the sum of the fractions
+                is not equal to 1.
+        """
         fraction_args = [self.train_fraction, self.val_fraction, self.test_fraction]
         keys_args = [self.train_keys, self.val_keys, self.test_keys]
 
@@ -163,113 +328,11 @@ class SpineDataModule(pl.LightningDataModule):
                 )
             )
 
-    def _check_cache(self):
-        """_summary_"""
-        print("Checking cache...")
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self.cache_dict = {key: self.__dict__[key] for key in ARG_KEYS}
-        self.cache_file = self.cache_dir / f"{hash_dict(self.cache_dict)}.pt"
-        self.cache_exists = (self.cache_file).exists()
-
-    def _load_cache(self):
-        """_summary_"""
-        print(f"Loading cache from {self.cache_file}...")
-        self.data = torch.load(self.cache_file)
-
-    def _load_data(self):
-        """Loads both backscan point clouds and metadata from the data directories
-        found in _parse_datapaths().
-        """
-        print(f"Loading data...")
-
-        # auxiliary selection for quick testing and debugging
-        back_paths = self.dirs_back[: self.n_subjects]
-        meta_paths = self.dirs_meta[: self.n_subjects]
-
-        for back_path, meta_path in tqdm(
-            zip(back_paths, meta_paths), total=len(back_paths)
-        ):
-
-            msg = (
-                f"Backscan and metadata files do not match: {back_path} and {meta_path}"
-            )
-            assert back_path.parent == meta_path.parent, msg
-
-            with open(meta_path, "r") as f:
-                meta_id = json.load(f)
-                unique_id = f"{meta_id['dataset']}_{meta_id['id']}"
-                self.meta[unique_id] = meta_id
-            self.backs[unique_id] = o3d.io.read_point_cloud(str(back_path))
-
-    def _reformat_data(self):
-        """_summary_"""
-        print("Reformatting data...")
-        for unique_id in tqdm(self.meta.keys()):
-            self.data[unique_id] = {}
-            self.data[unique_id]["backscan"] = self.backs[unique_id]
-            self.data[unique_id]["dataset"] = self.meta[unique_id]["dataset"]
-            self.data[unique_id]["id"] = self.meta[unique_id]["id"]
-            self.data[unique_id]["age"] = self.meta[unique_id]["age"]
-            self.data[unique_id]["gender"] = self.meta[unique_id]["gender"]
-            self.data[unique_id]["status"] = self.meta[unique_id]["status"]
-
-            # change from camelCase to snake_case for python conventions
-            self.data[unique_id]["pipeline_steps"] = self.meta[unique_id][
-                "pipelineSteps"
-            ].copy()
-            self.data[unique_id]["special_points"] = self.meta[unique_id][
-                "specialPts"
-            ].copy()
-
-            for point_id, point in self.data[unique_id]["special_points"].items():
-                self.data[unique_id]["special_points"][point_id] = np.asarray(point)
-
-            if self.data[unique_id]["dataset"] == "croatian":
-                pc_type = "formetric"
-            else:
-                pc_type = "pcdicomapp"
-
-            self.data[unique_id]["esl"] = np.asarray(
-                self.meta[unique_id]["esl"][pc_type]
-            )
-            self.data[unique_id]["isl"] = np.asarray(
-                self.meta[unique_id]["isl"][pc_type]
-            )
-
-    def _preprocess_data(self):
-        """_summary_"""
-        print("Preprocessing data...")
-        transforms = []
-        for i in range(len(self.transform_args)):
-            for key, value in self.transform_args.items():
-                if value["transform_number"] == i:
-                    transforms.append(TRANSFORMS[key](**value))
-
-        transforms = v2.Compose(transforms)
-        # TODO: prettify print
-        print(transforms)
-
-        for unique_id in tqdm(self.data.keys()):
-            self.data[unique_id] = transforms(self.data[unique_id])
-
-    def _save_cache(self):
-        """_summary_"""
-        print(f"Saving cache to {self.cache_file}...")
-        torch.save(self.data, self.cache_file)
-
-    def _split_data(self):
-        """_summary_"""
-        print("Splitting data...")
-        self._check_split_args()
-        self.train_data = SpineDataset({key: self.data[key] for key in self.train_keys})
-        self.val_data = SpineDataset({key: self.data[key] for key in self.train_keys})
-        self.test_data = SpineDataset({key: self.data[key] for key in self.train_keys})
-
     def train_dataloader(self):
-        """_summary_
+        """Creates the training dataloader.
 
         Returns:
-            _type_: _description_
+            train_dataloader (torch.utils.data.DataLoader): The training dataloader.
         """
         train_dataloader = DataLoader(
             self.train_data, batch_size=self.batch_size, shuffle=True
@@ -277,10 +340,10 @@ class SpineDataModule(pl.LightningDataModule):
         return train_dataloader
 
     def val_dataloader(self):
-        """_summary_
+        """Creates the validation dataloader.
 
         Returns:
-            _type_: _description_
+            val_dataloader (torch.utils.data.DataLoader): The validation dataloader.
         """
         val_dataloader = DataLoader(
             self.val_data, batch_size=len(self.val_data), shuffle=False
@@ -288,10 +351,10 @@ class SpineDataModule(pl.LightningDataModule):
         return val_dataloader
 
     def test_dataloader(self):
-        """_summary_
+        """Creates the test dataloader.
 
         Returns:
-            _type_: _description_
+            test_data_loader (torch.utils.data.DataLoader): The test dataloader.
         """
         test_dataloader = DataLoader(
             self.test_data, batch_size=len(self.test_data), shuffle=False
