@@ -1,25 +1,22 @@
 import numpy as np
+import numpy.typing as npt
 import open3d as o3d
 import torch.nn as nn
 
 
 class ProjectToPlane(nn.Module):
-    """_summary_
-
-    Args:
-        nn (_type_): _description_
-    """
+    """Project a point cloud to a plane and create a depth map."""
 
     def __init__(
         self, height: int, width: int, z_lims: list, m_factor: float, **kwargs
     ):
-        """_summary_
+        """Initialize the ProjectToPlane class.
 
         Args:
-            height (int): _description_
-            width (int): _description_
-            z_lims (list): _description_
-            m_factor (float): _description_
+            height (int): The height of the depth map.
+            width (int): The width of the depth map.
+            z_lims (list): The limits of the z values to consider.
+            m_factor (float): The multiplication factor for the average distance.
         """
         super().__init__()
         self.height = height
@@ -27,12 +24,12 @@ class ProjectToPlane(nn.Module):
         self.z_lims = z_lims
         self.m_factor = m_factor
 
-    def find_points_in_roi(self, pcd, roi):
-        """_summary_
+    def find_points_in_roi(self, pcd: npt.NDArray, roi: npt.NDArray) -> npt.NDArray:
+        """Find the points in the point cloud that are within the region of interest.
 
         Args:
-            pcd (_type_): _description_
-            roi (_type_): _description_
+            pcd (np.ndarray): The point cloud to search.
+            roi (np.ndarray): The region of interest to search for points.
 
         Returns:
             _type_: _description_
@@ -51,14 +48,16 @@ class ProjectToPlane(nn.Module):
 
         return inds
 
-    def forward(self, data_id: dict):
-        """_summary_
+    def forward(self, data_id: dict) -> dict:
+        """Project the point cloud to a plane and create a depth map.
 
         Args:
-            data_id (dict): _description_
+            data_id (dict): A single sample of the data to project.
+            Must have the key 'backscan' which stores the point cloud.
 
         Returns:
-            _type_: _description_
+            data_id (dict): The projected data sample. The key 'depth_map' will
+            store the depth map.
         """
         pc = data_id["backscan"]
 

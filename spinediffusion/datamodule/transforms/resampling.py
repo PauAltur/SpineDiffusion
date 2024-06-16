@@ -6,7 +6,14 @@ from scipy.interpolate import splev, splprep
 
 
 class Resample3DCurve(nn.Module):
+    """Resample a 3D curve using cubic spline interpolation."""
+
     def __init__(self, n_points: float, **kwargs):
+        """Initialize the Resample3DCurve class.
+
+        Args:
+            n_points (float): The number of points to resample the curve to.
+        """
         super().__init__()
         self.n_points = n_points
 
@@ -40,34 +47,31 @@ class Resample3DCurve(nn.Module):
 
 
 class ResamplePointCloud(nn.Module):
-    """_summary_
-
-    Args:
-        nn (_type_): _description_
-    """
+    """Resample a point cloud using Poisson disk sampling or uniform sampling."""
 
     def __init__(self, n_points: int, method: str, **kwargs):
-        """_summary_
+        """Initialize the ResamplePointCloud class.
 
         Args:
-            n_points (int): _description_
-            method (str): _description_
+            n_points (int): The number of points to resample the point cloud to.
+            method (str): The method to use for resampling. Must be either
+            'poisson' or 'uniform'.
         """
         super().__init__()
         self.n_points = n_points
         self.method = method
 
     def forward(self, data_id: dict) -> dict:
-        """_summary_
+        """Resample the "backscan" point cloud in the data_id dictionary.
 
         Args:
-            data_id (dict): _description_
+            data_id (dict): A single sample of the data to resample.
 
         Raises:
-            ValueError: _description_
+            ValueError: If the method is not 'poisson' or 'uniform'.
 
         Returns:
-            dict: _description_
+            dict: The resampled data sample.
         """
         pcd = data_id["backscan"]
 
@@ -90,9 +94,11 @@ class ResamplePointCloud(nn.Module):
         elif self.method == "uniform":
             pcd_sampled = mesh.sample_points_uniformly(number_of_points=self.n_points)
         else:
-            raise ValueError(
-                "Invalid method for resampling point cloud. Must be either 'poisson' or 'uniform'."
+            msg = (
+                f"Method {self.method} is not supported."
+                " Please use 'poisson' or 'uniform'."
             )
+            raise ValueError(msg)
 
         data_id["backscan"] = pcd_sampled
 

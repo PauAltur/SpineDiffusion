@@ -46,7 +46,11 @@ class SpineLengthNormalization(nn.Module):
     """
 
     def __init__(self, norm_length: float, **kwargs):
-        """Initializes the SpineLengthNormalization class."""
+        """Initializes the SpineLengthNormalization class.
+
+        Args:
+            norm_length (float): The length to normalize the spine to.
+        """
         super().__init__()
         self.norm_length = norm_length
 
