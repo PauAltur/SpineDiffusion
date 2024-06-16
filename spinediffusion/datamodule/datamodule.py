@@ -1,7 +1,5 @@
 import glob
 import json
-import os
-import sys
 from pathlib import Path
 from typing import Optional
 
@@ -10,7 +8,7 @@ import open3d as o3d
 import pytorch_lightning as pl
 import torch
 from natsort import natsorted
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader
 from torchvision.transforms import v2
 from tqdm import tqdm
 
@@ -72,24 +70,29 @@ class SpineDataModule(pl.LightningDataModule):
             data_dir (str): The root directory of the dataset.
             batch_size (int): The batch size for the training dataloader.
             transform_args (dict): A dictionary containing the arguments for the
-                data preprocessing transforms. For more information on the available
-                transforms, please refer to the README.md in the transforms subdirectory.
-            train_fraction (Optional[float], optional): The fraction of the dataset to
-                use as a training set. Defaults to None.
-            val_fraction (Optional[float], optional):  The fraction of the dataset to
-                use as a validation set. Defaults to None.
-            test_fraction (Optional[float], optional):  The fraction of the dataset to
-                use as a test set. Defaults to None.
-            train_keys (Optional[list], optional): The exact keys of the samples to use
-                as a training set. The keys have the format dataset_id. Defaults to None.
+                data preprocessing transforms. For more information on the
+                available transforms, please refer to the README.md in the
+                transforms subdirectory.
+            train_fraction (Optional[float], optional): The fraction of the dataset
+                to use as a training set. Defaults to None.
+            val_fraction (Optional[float], optional):  The fraction of the dataset
+                to use as a validation set. Defaults to None.
+            test_fraction (Optional[float], optional):  The fraction of the dataset
+                to use as a test set. Defaults to None.
+            train_keys (Optional[list], optional): The exact keys of the samples to
+                use as a training set. The keys have the format dataset_id. Defaults
+                to None.
             val_keys (Optional[list], optional): The exact keys of the samples to use
-                as a validation set. The keys have the format dataset_id. Defaults to None.
+                as a validation set. The keys have the format dataset_id. Defaults to
+                None.
             test_keys (Optional[list], optional): The exact keys of the samples to use
                 as a test set. The keys have the format dataset_id. Defaults to None.
-            n_subjects (Optional[float], optional): The number of subjects to load from the
-                dataset. Defaults to None, which loads all.
-            use_cache (bool, optional): Whether to use the cache if it exists. Defaults to True.
-            cache_dir (str, optional): The directory to save the cache. Defaults to "../../cache/".
+            n_subjects (Optional[float], optional): The number of subjects to load from
+                the dataset. Defaults to None, which loads all.
+            use_cache (bool, optional): Whether to use the cache if it exists. Defaults
+                to True.
+            cache_dir (str, optional): The directory to save the cache. Defaults to
+            "../../cache/".
         """
         super().__init__()
         self.data_dir = Path(data_dir)
@@ -143,8 +146,8 @@ class SpineDataModule(pl.LightningDataModule):
 
         assert self.data_dir.exists(), "Data directory does not exist."
 
-        back_dir = str(self.data_dir / "**" / f"*processed.ply")
-        meta_dir = str(self.data_dir / "**" / f"*processed.json")
+        back_dir = str(self.data_dir / "**" / "*processed.ply")
+        meta_dir = str(self.data_dir / "**" / "*processed.json")
 
         # making every path string a Path object is useful for cross-OS compatibility
         self.dirs_back = [Path(path) for path in natsorted(glob.glob(back_dir))]
@@ -167,7 +170,7 @@ class SpineDataModule(pl.LightningDataModule):
         """Loads both backscan point clouds and metadata from the data directories
         found in _parse_datapaths().
         """
-        print(f"Loading data...")
+        print("Loading data...")
 
         # auxiliary selection for quick testing and debugging
         back_paths = self.dirs_back[: self.n_subjects]
@@ -189,7 +192,8 @@ class SpineDataModule(pl.LightningDataModule):
             self.backs[unique_id] = o3d.io.read_point_cloud(str(back_path))
 
     def _reformat_data(self):
-        """Reformats the data into a more convenient structure for the rest of the pipeline.
+        """Reformats the data into a more convenient structure for
+        the rest of the pipeline.
 
         Each sample is stored as a dictionary with the following keys:
         - backscan: the backscan point cloud
@@ -203,7 +207,8 @@ class SpineDataModule(pl.LightningDataModule):
         - esl: the external spinal line
         - isl: the internal spinal line
 
-        All samples are stored in self.data as a dictionary with the unique_id as the key.
+        All samples are stored in self.data as a dictionary with the
+        unique_id as the key.
         """
         print("Reformatting data...")
         for unique_id in tqdm(self.meta.keys()):
@@ -239,10 +244,12 @@ class SpineDataModule(pl.LightningDataModule):
             )
 
     def _preprocess_data(self):
-        """Preprocesses the data using the transforms provided in the transform_args dictionary.
+        """Preprocesses the data using the transforms provided
+        in the transform_args dictionary.
 
-        The transforms are applied order according to the transform_number key in the transform_args
-        dictionary. The transforms are then composed into a single transform using torchvision.transforms.Compose.
+        The transforms are applied order according to the transform_number
+        key in the transform_args dictionary. The transforms are then composed
+        into a single transform using torchvision.transforms.Compose.
         """
         print("Preprocessing data...")
         transforms = []
@@ -258,8 +265,9 @@ class SpineDataModule(pl.LightningDataModule):
             self.data[unique_id] = transforms(self.data[unique_id])
 
     def _save_cache(self):
-        """Saves the data to a cache file for future use. The cache file is saved in the cache directory
-        with the name being the hash of the cache_dict.
+        """Saves the data to a cache file for future use. The cache file
+        is saved in the cache directory with the name being the hash of
+        the cache_dict.
 
         The cache_dict is a dictionary containing the following keys:
         - data_dir: the root directory of the dataset
@@ -273,11 +281,12 @@ class SpineDataModule(pl.LightningDataModule):
         torch.save(self.data, self.cache_file)
 
     def _split_data(self):
-        """Splits the data into training, validation, and test sets according to the provided fractions
-        or keys. The data is split into three SpineDataset objects: train_data, val_data, and test_data.
+        """Splits the data into training, validation, and test sets according
+        to the provided fractions or keys. The data is split into three SpineDataset
+        objects: train_data, val_data, and test_data.
 
-        The train_data, val_data, and test_data objects are then used to create the training, validation,
-        and test dataloaders, respectively.
+        The train_data, val_data, and test_data objects are then used to create the
+        training, validation, and test dataloaders, respectively.
         """
         print("Splitting data...")
         self._check_split_args()
@@ -286,12 +295,12 @@ class SpineDataModule(pl.LightningDataModule):
         self.test_data = SpineDataset({key: self.data[key] for key in self.train_keys})
 
     def _check_split_args(self):
-        """Checks the arguments for splitting the data into training, validation, and test sets. In case
-        fractions are provided, the data is split randomly.
+        """Checks the arguments for splitting the data into training, validation,
+        and test sets. In case fractions are provided, the data is split randomly.
 
         Raises:
-            AssertionError: If both fractions and keys are provided, or if the sum of the fractions
-                is not equal to 1.
+            AssertionError: If both fractions and keys are provided, or if the
+                sum of the fractions is not equal to 1.
         """
         fraction_args = [self.train_fraction, self.val_fraction, self.test_fraction]
         keys_args = [self.train_keys, self.val_keys, self.test_keys]
