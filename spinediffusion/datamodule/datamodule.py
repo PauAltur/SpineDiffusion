@@ -15,6 +15,7 @@ from tqdm import tqdm
 from spinediffusion.datamodule.dataset import SpineDataset
 from spinediffusion.utils.hashing import hash_dict
 
+from .transforms.closing import Closing
 from .transforms.normalizing import ConstantNormalization, SpineLengthNormalization
 from .transforms.projecting import ProjectToPlane
 from .transforms.resampling import Resample3DCurve, ResamplePointCloud
@@ -26,6 +27,7 @@ TRANSFORMS = {
     "resample_3d_curve": Resample3DCurve,
     "project_to_plane": ProjectToPlane,
     "resample_point_cloud": ResamplePointCloud,
+    "close_depthmap": Closing,
     "tensorize": Tensorize,
 }
 
@@ -278,7 +280,12 @@ class SpineDataModule(pl.LightningDataModule):
         The cache file is saved using torch.save as a .pt file.
         """
         print(f"Saving cache to {self.cache_file}...")
-        torch.save(self.data, self.cache_file)
+        try:
+            torch.save(self.data, self.cache_file)
+            json.dumps(self.cache_dict)
+            print("Saved!")
+        except TypeError:
+            print("Error saving cache!")
 
     def _split_data(self):
         """Splits the data into training, validation, and test sets according

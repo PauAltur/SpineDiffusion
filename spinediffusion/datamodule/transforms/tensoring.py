@@ -22,4 +22,7 @@ class Tensorize(nn.Module):
         data_id["backscan"] = torch.tensor(np.asarray(data_id["backscan"].points))
         data_id["esl"] = torch.tensor(data_id["esl"])
         data_id["isl"] = torch.tensor(data_id["isl"])
+        if "depth_map" in data_id:
+            data_id["depth_map"] = torch.tensor(data_id["depth_map"].copy())
+
         return data_id
