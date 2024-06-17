@@ -14,6 +14,7 @@ from tqdm import tqdm
 
 from spinediffusion.datamodule.dataset import SpineDataset
 from spinediffusion.utils.hashing import hash_dict
+from spinediffusion.utils.misc import dumper
 
 from .transforms.closing import Closing
 from .transforms.normalizing import ConstantNormalization, SpineLengthNormalization
@@ -36,6 +37,7 @@ HASH_ARGS = {
     "batch_size",
     "transform_args",
     "n_subjects",
+    "exclude_patients",
 }
 
 
@@ -63,6 +65,7 @@ class SpineDataModule(pl.LightningDataModule):
         val_keys: Optional[list] = None,
         test_keys: Optional[list] = None,
         n_subjects: Optional[float] = None,
+        exclude_patients: Optional[dict] = None,
         use_cache: bool = True,
         cache_dir: str = "../../cache/",
     ):
@@ -91,6 +94,9 @@ class SpineDataModule(pl.LightningDataModule):
                 as a test set. The keys have the format dataset_id. Defaults to None.
             n_subjects (Optional[float], optional): The number of subjects to load from
                 the dataset. Defaults to None, which loads all.
+            exclude_patients (Optional[dict], optional): A dictionary containing the
+                keys of the datasets and the ids of the patients to exclude from the
+                dataset. Defaults to None.
             use_cache (bool, optional): Whether to use the cache if it exists. Defaults
                 to True.
             cache_dir (str, optional): The directory to save the cache. Defaults to
@@ -110,6 +116,7 @@ class SpineDataModule(pl.LightningDataModule):
         self.backs = {}
         self.data = {}
         self.n_subjects = n_subjects
+        self.exclude_patients = exclude_patients
         self.use_cache = use_cache
         self.cache_dir = Path(cache_dir)
 
@@ -129,6 +136,7 @@ class SpineDataModule(pl.LightningDataModule):
         else:
             print("Cache not found or not used for this parameter combination.")
             self._parse_datapaths()
+            self._exclude_patients()
             self._load_data()
             self._reformat_data()
             self._preprocess_data()
@@ -154,6 +162,24 @@ class SpineDataModule(pl.LightningDataModule):
         # making every path string a Path object is useful for cross-OS compatibility
         self.dirs_back = [Path(path) for path in natsorted(glob.glob(back_dir))]
         self.dirs_meta = [Path(path) for path in natsorted(glob.glob(meta_dir))]
+
+    def _exclude_patients(self):
+        """Excludes patients from the dataset based on the provided dictionary."""
+        ex_patients_list = []
+        for key in self.exclude_patients:
+            for id in self.exclude_patients[key]:
+                ex_patients_list.append(f"{key}_{id}")
+
+        self.dirs_back = [
+            path
+            for path in self.dirs_back
+            if not any(patient in str(path) for patient in ex_patients_list)
+        ]
+        self.dirs_meta = [
+            path
+            for path in self.dirs_meta
+            if not any(patient in str(path) for patient in ex_patients_list)
+        ]
 
     def _check_cache(self):
         """Checks if a cache exists for the current parameter combination."""
@@ -282,7 +308,8 @@ class SpineDataModule(pl.LightningDataModule):
         print(f"Saving cache to {self.cache_file}...")
         try:
             torch.save(self.data, self.cache_file)
-            json.dumps(self.cache_dict)
+            with open(self.cache_file.with_suffix(".json"), "w") as f:
+                json.dump(self.cache_dict, f, default=dumper)
             print("Saved!")
         except TypeError:
             print("Error saving cache!")
