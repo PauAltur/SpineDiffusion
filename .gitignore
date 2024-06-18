@@ -8,8 +8,11 @@
 **/.vscode/
 
 # cache data
-**/.cache/
+**/cache/
 *.pt
 
 # package files
 **/*.egg-info/
+
+# logs
+**/lightning_logs/

@@ -23,6 +23,8 @@ class Tensorize(nn.Module):
         data_id["esl"] = torch.tensor(data_id["esl"])
         data_id["isl"] = torch.tensor(data_id["isl"])
         if "depth_map" in data_id:
-            data_id["depth_map"] = torch.tensor(data_id["depth_map"].copy())
+            data_id["depth_map"] = torch.tensor(data_id["depth_map"].copy()).unsqueeze(
+                0
+            )
 
         return data_id

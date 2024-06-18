@@ -41,7 +41,7 @@ trainer:
   reload_dataloaders_every_n_epochs: 0
   default_root_dir: null
 data:
-  class_path: spinediffusion.datamodule.datamodule.SpinediffusionDataModule
+  class_path: spinediffusion.datamodule.datamodule.SpineDataModule
   init_args:
     data_dir: P:/Projects/LMB_4Dspine/back_scan_database
     batch_size: 10
@@ -63,9 +63,12 @@ data:
         intensity: 1
       close_depthmap:
         transform_number: 4
-        se_size: (3, 3)
+        se_size: [3, 3]
       tensorize:
         transform_number: 5
+    train_fraction: 0.8
+    val_fraction: 0.1
+    test_fraction: 0.1
 model:
   class_path: pytorch_lightning.demos.boring_classes.DemoModel
   init_args:

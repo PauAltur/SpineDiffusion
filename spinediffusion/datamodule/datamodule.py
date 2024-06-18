@@ -63,8 +63,8 @@ class SpineDataModule(pl.LightningDataModule):
         train_keys: Optional[list] = None,
         val_keys: Optional[list] = None,
         test_keys: Optional[list] = None,
-        n_subjects: Optional[float] = None,
-        exclude_patients: Optional[dict] = None,
+        n_subjects: Optional[int] = None,
+        exclude_patients: dict = {},
         use_cache: bool = True,
         cache_dir: str = "../../cache/",
     ):
