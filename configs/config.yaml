@@ -41,7 +41,34 @@ trainer:
   reload_dataloaders_every_n_epochs: 0
   default_root_dir: null
 data:
+  class_path: spinediffusion.datamodule.datamodule.SpinediffusionDataModule
+  init_args:
+    data_dir: P:/Projects/LMB_4Dspine/back_scan_database
+    batch_size: 10
+    transform_args:
+      spine_length_normalize:
+        transform_number: 0
+        norm_length: 1
+      resample_3d_curve:
+        transform_number: 1
+        n_points: 256
+      resample_point_cloud:
+        transform_number: 2
+        n_points: 65536
+        method: uniform
+      project_to_plane:
+        transform_number: 3
+        height: 124
+        width: 124
+        intensity: 1
+      close_depthmap:
+        transform_number: 4
+        se_size: (3, 3)
+      tensorize:
+        transform_number: 5
 model:
-  out_dim: 10
-  learning_rate: 0.02
+  class_path: pytorch_lightning.demos.boring_classes.DemoModel
+  init_args:
+    out_dim: 10
+    learning_rate: 0.02
 ckpt_path: null

@@ -34,7 +34,6 @@ TRANSFORMS = {
 
 HASH_ARGS = {
     "data_dir",
-    "batch_size",
     "transform_args",
     "n_subjects",
     "exclude_patients",
