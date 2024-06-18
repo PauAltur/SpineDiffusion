@@ -58,8 +58,8 @@ data:
         method: uniform
       project_to_plane:
         transform_number: 3
-        height: 124
-        width: 124
+        height: 128
+        width: 128
         intensity: 1
       close_depthmap:
         transform_number: 4
@@ -70,8 +70,28 @@ data:
     val_fraction: 0.1
     test_fraction: 0.1
 model:
-  class_path: pytorch_lightning.demos.boring_classes.DemoModel
+  class_path: spinediffusion.models.diffusion_models.DepthMapDiffusionModel
   init_args:
-    out_dim: 10
-    learning_rate: 0.02
+    model:
+      class_path: diffusers.UNet2DModel
+      init_args:
+        sample_size: 128
+        in_channels: 1
+        out_channels: 1
+        layers_per_block: 2
+        block_out_channels: [128, 128, 256, 256, 512, 512]
+        down_block_types: ["DownBlock2D", "DownBlock2D", "DownBlock2D", "DownBlock2D", "AttnDownBlock2D", "DownBlock2D"]
+        up_block_types: ["UpBlock2D", "AttnUpBlock2D", "UpBlock2D", "UpBlock2D", "UpBlock2D", "UpBlock2D"]
+    scheduler:
+      class_path: diffusers.DDPMScheduler
+      init_args:
+        num_train_timesteps: 1000
+    optimizer:
+      class_path: torch.optim.AdamW
+    lr_scheduler:
+      class_path: diffusers.get_cosine_schedule_with_warmup
+    lr: 0.0001
+    loss:
+      class_path: torch.nn.MSELoss
+    max_epochs: 100
 ckpt_path: null

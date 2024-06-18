@@ -8,11 +8,10 @@ import open3d as o3d
 import pytorch_lightning as pl
 import torch
 from natsort import natsorted
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, TensorDataset
 from torchvision.transforms import v2
 from tqdm import tqdm
 
-from spinediffusion.datamodule.dataset import SpineDataset
 from spinediffusion.utils.hashing import hash_dict
 from spinediffusion.utils.misc import dumper
 
@@ -298,12 +297,15 @@ class SpineDataModule(pl.LightningDataModule):
             for key, value in self.transform_args.items():
                 if value["transform_number"] == i:
                     transforms.append(TRANSFORMS[key](**value))
+                    print(f"{key}")
+                    print("---------------------------")
+                    for k, v in value.items():
+                        print(f"{k}: {v}")
+                    print("\n")
 
-        transforms = v2.Compose(transforms)
-        # TODO: prettify print
-        print(transforms)
+        self.transforms = v2.Compose(transforms)
         for unique_id in tqdm(self.data.keys()):
-            self.data[unique_id] = transforms(self.data[unique_id])
+            self.data[unique_id] = self.transforms(self.data[unique_id])
 
     def _save_cache(self):
         """Saves the data to a cache file for future use. The cache file
@@ -312,7 +314,6 @@ class SpineDataModule(pl.LightningDataModule):
 
         The cache_dict is a dictionary containing the following keys:
         - data_dir: the root directory of the dataset
-        - batch_size: the batch size for the training dataloader
         - transform_args: the arguments for the data preprocessing transforms
         - n_subjects: the number of subjects to load from the dataset
 
@@ -337,9 +338,9 @@ class SpineDataModule(pl.LightningDataModule):
         """
         print("Splitting data...")
         self._check_split_args()
-        self.train_data = SpineDataset({key: self.data[key] for key in self.train_keys})
-        self.val_data = SpineDataset({key: self.data[key] for key in self.train_keys})
-        self.test_data = SpineDataset({key: self.data[key] for key in self.train_keys})
+        self.train_data = self._compose_dataset(self.train_keys)
+        self.val_data = self._compose_dataset(self.val_keys)
+        self.test_data = self._compose_dataset(self.test_keys)
 
     def _check_split_args(self):
         """Checks the arguments for splitting the data into training, validation,
@@ -384,16 +385,40 @@ class SpineDataModule(pl.LightningDataModule):
                 )
             )
 
+    def _compose_dataset(self, keys: list):
+        """Composes a dataset from the provided keys.
+
+        Args:
+            keys (list): The keys of the samples to include in the dataset.
+
+        Returns:
+            dataset (SpineDataset): The composed dataset.
+        """
+        if "project_to_plane" in self.transform_args:
+            input_key = "depth_map"
+        else:
+            input_key = "backscan"
+
+        inputs, esls, isls = [], [], []
+
+        for key in keys:
+            inputs.append(self.data[key][input_key])
+            esls.append(self.data[key]["esl"])
+            isls.append(self.data[key]["isl"])
+
+        return TensorDataset(
+            torch.tensor(np.stack(inputs)),
+            torch.tensor(np.stack(esls)),
+            torch.tensor(np.stack(isls)),
+        )
+
     def train_dataloader(self):
         """Creates the training dataloader.
 
         Returns:
             train_dataloader (torch.utils.data.DataLoader): The training dataloader.
         """
-        train_dataloader = DataLoader(
-            self.train_data, batch_size=self.batch_size, shuffle=True
-        )
-        return train_dataloader
+        return DataLoader(self.train_data, batch_size=self.batch_size, shuffle=True)
 
     def val_dataloader(self):
         """Creates the validation dataloader.
@@ -401,10 +426,7 @@ class SpineDataModule(pl.LightningDataModule):
         Returns:
             val_dataloader (torch.utils.data.DataLoader): The validation dataloader.
         """
-        val_dataloader = DataLoader(
-            self.val_data, batch_size=len(self.val_data), shuffle=False
-        )
-        return val_dataloader
+        return DataLoader(self.val_data, batch_size=len(self.val_data), shuffle=False)
 
     def test_dataloader(self):
         """Creates the test dataloader.
@@ -412,7 +434,4 @@ class SpineDataModule(pl.LightningDataModule):
         Returns:
             test_data_loader (torch.utils.data.DataLoader): The test dataloader.
         """
-        test_dataloader = DataLoader(
-            self.test_data, batch_size=len(self.test_data), shuffle=False
-        )
-        return test_dataloader
+        return DataLoader(self.test_data, batch_size=len(self.test_data), shuffle=False)

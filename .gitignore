@@ -16,3 +16,6 @@
 
 # logs
 **/lightning_logs/
+
+# temporary files
+**/temp/
