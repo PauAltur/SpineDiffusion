@@ -200,13 +200,11 @@ class SpineDataModule(pl.LightningDataModule):
         print("Loading data...")
 
         # auxiliary selection for quick testing and debugging
-        back_paths = self.dirs_back[: self.n_subjects]
-        meta_paths = self.dirs_meta[: self.n_subjects]
+        self._select_n_subj_per_dataset()
 
         for back_path, meta_path in tqdm(
-            zip(back_paths, meta_paths), total=len(back_paths)
+            zip(self.dirs_back, self.dirs_meta), total=len(self.dirs_back)
         ):
-
             msg = (
                 f"Backscan and metadata files do not match: {back_path} and {meta_path}"
             )
@@ -217,6 +215,22 @@ class SpineDataModule(pl.LightningDataModule):
                 unique_id = f"{meta_id['dataset']}_{meta_id['id']}"
                 self.meta[unique_id] = meta_id
             self.backs[unique_id] = o3d.io.read_point_cloud(str(back_path))
+
+    def _select_n_subj_per_dataset(self):
+        """Selects the first n_subjects from each dataset for quick testing and debugging."""
+        DATASETS = ["balgrist", "croatian", "italian", "ukbb"]
+        if self.n_subjects is not None:
+            back_paths = []
+            meta_paths = []
+            for dataset in DATASETS:
+                back_paths += [path for path in self.dirs_back if dataset in str(path)][
+                    : self.n_subjects
+                ]
+                meta_paths += [path for path in self.dirs_meta if dataset in str(path)][
+                    : self.n_subjects
+                ]
+            self.dirs_back = back_paths
+            self.dirs_meta = meta_paths
 
     def _reformat_data(self):
         """Reformats the data into a more convenient structure for

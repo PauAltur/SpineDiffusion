@@ -17,6 +17,19 @@ class Resample3DCurve(nn.Module):
         super().__init__()
         self.n_points = n_points
 
+    def _remove_duplicate_points(self, curve: npt.NDArray) -> npt.NDArray:
+        """Remove duplicate points from a 3D curve.
+
+        Args:
+            curve (npt.NDArray): A 3D curve.
+
+        Returns:
+            npt.NDArray: The 3D curve with duplicate points removed.
+        """
+        curve = np.round(curve, 5)
+        curve = np.unique(curve, axis=0)
+        return curve
+
     def resample_curve(self, curve: npt.NDArray) -> npt.NDArray:
         """Resample a 3D curve using cubic spline interpolation.
 
@@ -26,6 +39,7 @@ class Resample3DCurve(nn.Module):
         Returns:
             npt.NDArray: The resampled 3D curve.
         """
+        curve = self._remove_duplicate_points(curve)
         tck, u = splprep(curve.T, s=0)
         u_new = np.linspace(0, 1, self.n_points)
         curve_new = splev(u_new, tck)
