@@ -86,12 +86,11 @@ model:
       class_path: diffusers.DDPMScheduler
       init_args:
         num_train_timesteps: 1000
-    optimizer:
-      class_path: torch.optim.AdamW
-    lr_scheduler:
-      class_path: diffusers.get_cosine_schedule_with_warmup
-    lr: 0.0001
     loss:
       class_path: torch.nn.MSELoss
-    max_epochs: 100
+      max_epochs: 100
+optimizer:
+  class_path: torch.optim.AdamW
+lr_scheduler:
+  class_path: diffusers.get_cosine_schedule_with_warmup
 ckpt_path: null

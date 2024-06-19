@@ -1,4 +1,5 @@
 from collections import defaultdict
+from typing import Optional
 
 import numpy as np
 import numpy.typing as npt
@@ -9,7 +10,16 @@ import torch.nn as nn
 class ProjectToPlane(nn.Module):
     """Project a point cloud to a plane and create a depth map."""
 
-    def __init__(self, height: int, width: int, intensity: float, **kwargs):
+    def __init__(
+        self,
+        height: int,
+        width: int,
+        spine_factor: float,
+        intensity: float,
+        method: str,
+        z_lims: Optional[list] = None,
+        **kwargs,
+    ):
         """Initialize the ProjectToPlane class.
 
         Args:
@@ -20,9 +30,12 @@ class ProjectToPlane(nn.Module):
         super().__init__()
         self.height = height
         self.width = width
+        self.spine_factor = spine_factor
         self.intensity = intensity
+        self.method = method
+        self.z_lims = z_lims
 
-    def _scale_point_cloud(self, pc: npt.NDArray) -> npt.NDArray:
+    def _scale_point_cloud(self, pc: npt.NDArray, special_points: dict) -> npt.NDArray:
         """Scale the point cloud to the desired dimensions.
 
         Args:
@@ -32,13 +45,22 @@ class ProjectToPlane(nn.Module):
             np.ndarray: The scaled point cloud.
         """
         x, y, z = pc[:, 0], pc[:, 1], pc[:, 2]
-        x_min, x_max = np.min(x), np.max(x)
-        y_min, y_max = np.min(y), np.max(y)
-        z_min, z_max = np.min(z), np.max(z)
 
-        x = (self.width - 1) * (x - x_min) / (x_max - x_min)
-        y = (self.height - 1) * (y - y_min) / (y_max - y_min)
-        z = self.intensity * (z - z_min) / (z_max - z_min)
+        C7 = special_points["C7"]
+        DM = special_points["DR"] + special_points["DL"] / 2
+        spine_length = np.linalg.norm(C7 - DM)
+
+        factor = (self.spine_factor * self.height) / spine_length
+
+        x = factor * x
+        y = factor * y
+
+        if self.z_lims:
+            z_min, z_max = self.z_lims
+            z = self.intensity * (z - z_min) / (z_max - z_min)
+        else:
+            z_min, z_max = np.min(z), np.max(z)
+            z = self.intensity * (z - z_min) / (z_max - z_min)
 
         return np.stack((x, y, z), axis=1)
 
@@ -55,8 +77,8 @@ class ProjectToPlane(nn.Module):
         """
         x, y, z = pc[:, 0], pc[:, 1], pc[:, 2]
 
-        h_axis = np.arange(self.height)
-        w_axis = np.arange(self.width)
+        h_axis = np.arange(-int(self.height / 2), int(self.height / 2))
+        w_axis = np.arange(-int(self.width / 2), int(self.width / 2))
 
         # -1 to make the bins start from 0
         x_bins = np.digitize(x, w_axis) - 1
@@ -64,17 +86,34 @@ class ProjectToPlane(nn.Module):
 
         depth_map = np.zeros((self.height, self.width))
 
-        hw_pixels_sum = np.zeros((self.height, self.width))
-        hw_pixels_count = np.zeros((self.height, self.width))
-
-        np.add.at(hw_pixels_sum, (y_bins, x_bins), z)
-        np.add.at(hw_pixels_count, (y_bins, x_bins), 1)
-
         # Calculate the mean where count is not zero
-        nonzero_mask = hw_pixels_count > 0
-        depth_map[nonzero_mask] = (
-            hw_pixels_sum[nonzero_mask] / hw_pixels_count[nonzero_mask]
-        )
+        assert self.method in [
+            "mean",
+            "median",
+        ], "Method should be either 'mean' or 'median'"
+        if self.method == "mean":
+            hw_pixels_sum = np.zeros((self.height, self.width))
+            hw_pixels_count = np.zeros((self.height, self.width))
+
+            np.add.at(hw_pixels_sum, (y_bins, x_bins), z)
+            np.add.at(hw_pixels_count, (y_bins, x_bins), 1)
+
+            nonzero_mask = hw_pixels_count > 0
+            depth_map[nonzero_mask] = (
+                hw_pixels_sum[nonzero_mask] / hw_pixels_count[nonzero_mask]
+            )
+
+        elif self.method == "median":
+            binned_data = np.vstack((y_bins, x_bins, z)).T
+            sorted_data = binned_data[np.lexsort((x_bins, y_bins))]
+            _, idx_start, counts = np.unique(
+                sorted_data[:, :2], axis=0, return_index=True, return_counts=True
+            )
+
+            for start, count in zip(idx_start, counts):
+                z_values = sorted_data[start : start + count, 2]
+                x, y = sorted_data[start, :2].astype(int)
+                depth_map[x, y] = np.median(z_values)
 
         return depth_map
 
@@ -89,6 +128,7 @@ class ProjectToPlane(nn.Module):
             store the depth map.
         """
         pc = np.asarray(data_id["backscan"].points)
-        pc = self._scale_point_cloud(pc)
+        special_points = data_id["special_points"]
+        pc = self._scale_point_cloud(pc, special_points)
         data_id["depth_map"] = np.flip(self._compute_depth_map(pc), axis=0)
         return data_id
