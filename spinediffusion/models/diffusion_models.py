@@ -1,26 +1,40 @@
+from typing import Optional
+
+import diffusers
 import pytorch_lightning as pl
 import torch
+from torchmetrics import MetricCollection
 
 
-class DepthMapDiffusionModel(pl.LightningModule):
-    """ """
+class BasicDiffusionModel(pl.LightningModule):
+    """Pytorch lignting module that wraps a diffusion model composed of a
+    noise prediction model and a noise scheduler coming from the diffusers
+    library: https://huggingface.co/docs/diffusers/index."""
 
-    def __init__(self, model, scheduler, lr: float, loss, max_epochs: int, **kwargs):
-        """
+    def __init__(
+        self,
+        model,
+        scheduler,
+        loss,
+        metrics,
+        model_ckpt: Optional[str] = None,
+        **kwargs,
+    ):
+        """Initializes the model.
 
         Args:
-            model (_type_): Noise prediction model. Must be a subclass of torch.nn.Module.
-            scheduler (_type_): Noise scheduler.
-            lr (_type_): Learning rate.
-            loss (_type_): Loss function.
-            max_epochs (_type_): Maximum number of epochs.
+            model (diffusers.ModelMixin): Noise prediction model. Must be a subclass of torch.nn.Module.
+            scheduler (diffusers.SchedulerMixin): Noise scheduler.
+            loss (torch.nn.Module): Loss function.
+            model_ckpt (str, optional): Path to a model checkpoint. Defaults to None.
         """
         super().__init__(**kwargs)
         self.model = model
+        if model_ckpt is not None:
+            self.model.from_pretrained(model_ckpt, use_safetensors=True)
         self.scheduler = scheduler
-        self.lr = lr
         self.loss = loss
-        self.max_epochs = max_epochs
+        self.metrics = MetricCollection(metrics)
 
     def step(self, batch: dict) -> torch.Tensor:
         """Computes a training/validation/test step.
@@ -31,18 +45,26 @@ class DepthMapDiffusionModel(pl.LightningModule):
         Returns:
             loss (torch.Tensor): The loss value.
         """
-        x = batch["inputs"]
+        x = batch[0]
 
-        noise = torch.randn(x.shape)
+        noise = torch.randn(x.shape, dtype=torch.float32, device=x.device)
         timesteps = torch.randint(
-            0, self.scheduler.num_train_timesteps, (x.shape[0],), dtype=torch.int64
+            0,
+            self.scheduler.num_train_timesteps,
+            (x.shape[0],),
+            dtype=torch.int32,
+            device=x.device,
         )
 
         noisy_x = self.scheduler.add_noise(x, noise, timesteps)
-        noise_pred = self.mode(noisy_x, timesteps, return_dict=False)[0]
-        loss = self.loss(noise_pred, noise)
+        noise_pred = self.model(
+            noisy_x.type(torch.float32), timesteps, return_dict=False
+        )[0]
 
-        return loss
+        loss = self.loss(noise_pred, noise)
+        metrics = self.metrics(noise_pred, noise)
+
+        return loss, metrics
 
     def training_step(self, batch: dict, batch_idx: int) -> torch.Tensor:
         """Computes a training step.
@@ -54,8 +76,10 @@ class DepthMapDiffusionModel(pl.LightningModule):
         Returns:
             loss (torch.Tensor): The loss value.
         """
-        loss = self.step(batch)
+        loss, metrics = self.step(batch)
+
         self.log("train_loss", loss)
+        self.log_dict(metrics)
         return loss
 
     def validation_step(self, batch: dict, batch_idx: int) -> torch.Tensor:
@@ -68,8 +92,9 @@ class DepthMapDiffusionModel(pl.LightningModule):
         Returns:
             loss (torch.Tensor): The loss value.
         """
-        loss = self.step(batch)
+        loss, metrics = self.step(batch)
         self.log("val_loss", loss)
+        self.log_dict(metrics)
         return loss
 
     def test_step(self, batch: dict, batch_idx: int) -> torch.Tensor:
@@ -82,8 +107,9 @@ class DepthMapDiffusionModel(pl.LightningModule):
         Returns:
             loss (torch.Tensor): The loss value.
         """
-        loss = self.step(batch)
+        loss, metrics = self.step(batch)
         self.log("test_loss", loss)
+        self.log_dict(metrics)
         return loss
 
     def predict_step(self, batch: dict, batch_idx: int) -> torch.Tensor:
@@ -96,7 +122,7 @@ class DepthMapDiffusionModel(pl.LightningModule):
         Returns:
             loss (torch.Tensor): The loss value.
         """
-        x = batch["inputs"]
+        x = batch[0]
 
         for t in self.scheduler.timesteps:
             noisy_residual = self.model(x, t).sample

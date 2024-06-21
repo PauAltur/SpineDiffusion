@@ -9,7 +9,7 @@ trainer:
   logger: null
   callbacks: null
   fast_dev_run: false
-  max_epochs: 2
+  max_epochs: 10
   min_epochs: null
   max_steps: -1
   min_steps: null
@@ -46,31 +46,32 @@ data:
     data_dir: P:/Projects/LMB_4Dspine/back_scan_database
     batch_size: 10
     transform_args:
-      spine_length_normalize:
-        transform_number: 0
-        norm_length: 1
       resample_3d_curve:
-        transform_number: 1
+        transform_number: 0
         n_points: 256
       resample_point_cloud:
-        transform_number: 2
+        transform_number: 1
         n_points: 65536
         method: uniform
       project_to_plane:
-        transform_number: 3
+        transform_number: 2
         height: 128
         width: 128
         intensity: 1
+        spine_factor: 1
+        method: "median"
+        z_lims: [-150, 100]
       close_depthmap:
-        transform_number: 4
+        transform_number: 3
         se_size: [3, 3]
       tensorize:
-        transform_number: 5
+        transform_number: 4
     train_fraction: 0.8
     val_fraction: 0.1
     test_fraction: 0.1
+    n_subjects: 10
 model:
-  class_path: spinediffusion.models.diffusion_models.DepthMapDiffusionModel
+  class_path: spinediffusion.models.diffusion_models.BasicDiffusionModel
   init_args:
     model:
       class_path: diffusers.UNet2DModel
@@ -88,7 +89,8 @@ model:
         num_train_timesteps: 1000
     loss:
       class_path: torch.nn.MSELoss
-      max_epochs: 100
+      init_args:
+        reduction: mean
 optimizer:
   class_path: torch.optim.Adam
   init_args:
