@@ -34,7 +34,7 @@ TRANSFORMS = {
 HASH_ARGS = {
     "data_dir",
     "transform_args",
-    "n_subjects",
+    "num_subjects",
     "exclude_patients",
 }
 
@@ -62,10 +62,11 @@ class SpineDataModule(pl.LightningDataModule):
         train_keys: Optional[list] = None,
         val_keys: Optional[list] = None,
         test_keys: Optional[list] = None,
-        n_subjects: Optional[int] = None,
+        num_subjects: Optional[int] = None,
         exclude_patients: dict = {},
         use_cache: bool = True,
         cache_dir: str = "../../cache/",
+        num_workers: int = 0,
     ):
         """Constructor for the SpineDataModule class.
 
@@ -90,7 +91,7 @@ class SpineDataModule(pl.LightningDataModule):
                 None.
             test_keys (Optional[list], optional): The exact keys of the samples to use
                 as a test set. The keys have the format dataset_id. Defaults to None.
-            n_subjects (Optional[float], optional): The number of subjects to load from
+            num_subjects (Optional[float], optional): The number of subjects to load from
                 the dataset. Defaults to None, which loads all.
             exclude_patients (Optional[dict], optional): A dictionary containing the
                 keys of the datasets and the ids of the patients to exclude from the
@@ -113,10 +114,11 @@ class SpineDataModule(pl.LightningDataModule):
         self.meta = {}
         self.backs = {}
         self.data = {}
-        self.n_subjects = n_subjects
+        self.num_subjects = num_subjects
         self.exclude_patients = exclude_patients
         self.use_cache = use_cache
         self.cache_dir = Path(cache_dir)
+        self.num_workers = num_workers
 
     def setup(self, stage: Optional[str]):
         """Setup method for the SpineDataModule class. This method is called
@@ -157,9 +159,13 @@ class SpineDataModule(pl.LightningDataModule):
         back_dir = str(self.data_dir / "**" / "*processed.ply")
         meta_dir = str(self.data_dir / "**" / "*processed.json")
 
+        # iglob is more memory-efficient than glob and allows to use tqdm
+        back_iter = tqdm(glob.iglob(back_dir, recursive=True), desc="Parsing backscans")
+        meta_iter = tqdm(glob.iglob(meta_dir, recursive=True), desc="Parsing metadata")
+
         # making every path string a Path object is useful for cross-OS compatibility
-        self.dirs_back = [Path(path) for path in natsorted(glob.glob(back_dir))]
-        self.dirs_meta = [Path(path) for path in natsorted(glob.glob(meta_dir))]
+        self.dirs_back = [Path(path) for path in natsorted(back_iter)]
+        self.dirs_meta = [Path(path) for path in natsorted(meta_iter)]
 
     def _exclude_patients(self):
         """Excludes patients from the dataset based on the provided dictionary."""
@@ -216,17 +222,17 @@ class SpineDataModule(pl.LightningDataModule):
             self.backs[unique_id] = o3d.io.read_point_cloud(str(back_path))
 
     def _select_n_subj_per_dataset(self):
-        """Selects the first n_subjects from each dataset for quick testing and debugging."""
+        """Selects the first num_subjects from each dataset for quick testing and debugging."""
         DATASETS = ["balgrist", "croatian", "italian", "ukbb"]
-        if self.n_subjects is not None:
+        if self.num_subjects is not None:
             back_paths = []
             meta_paths = []
             for dataset in DATASETS:
                 back_paths += [path for path in self.dirs_back if dataset in str(path)][
-                    : self.n_subjects
+                    : self.num_subjects
                 ]
                 meta_paths += [path for path in self.dirs_meta if dataset in str(path)][
-                    : self.n_subjects
+                    : self.num_subjects
                 ]
             self.dirs_back = back_paths
             self.dirs_meta = meta_paths
@@ -315,7 +321,7 @@ class SpineDataModule(pl.LightningDataModule):
         The cache_dict is a dictionary containing the following keys:
         - data_dir: the root directory of the dataset
         - transform_args: the arguments for the data preprocessing transforms
-        - n_subjects: the number of subjects to load from the dataset
+        - num_subjects: the number of subjects to load from the dataset
 
         The cache file is saved using torch.save as a .pt file.
         """
@@ -418,7 +424,12 @@ class SpineDataModule(pl.LightningDataModule):
         Returns:
             train_dataloader (torch.utils.data.DataLoader): The training dataloader.
         """
-        return DataLoader(self.train_data, batch_size=self.batch_size, shuffle=True)
+        return DataLoader(
+            self.train_data,
+            batch_size=self.batch_size,
+            shuffle=True,
+            num_workers=self.num_workers,
+        )
 
     def val_dataloader(self):
         """Creates the validation dataloader.
@@ -426,7 +437,12 @@ class SpineDataModule(pl.LightningDataModule):
         Returns:
             val_dataloader (torch.utils.data.DataLoader): The validation dataloader.
         """
-        return DataLoader(self.val_data, batch_size=len(self.val_data), shuffle=False)
+        return DataLoader(
+            self.val_data,
+            batch_size=len(self.val_data),
+            shuffle=False,
+            num_workers=self.num_workers,
+        )
 
     def test_dataloader(self):
         """Creates the test dataloader.
@@ -434,4 +450,9 @@ class SpineDataModule(pl.LightningDataModule):
         Returns:
             test_data_loader (torch.utils.data.DataLoader): The test dataloader.
         """
-        return DataLoader(self.test_data, batch_size=len(self.test_data), shuffle=False)
+        return DataLoader(
+            self.test_data,
+            batch_size=len(self.test_data),
+            shuffle=False,
+            num_workers=self.num_workers,
+        )

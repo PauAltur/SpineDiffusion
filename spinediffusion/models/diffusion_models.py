@@ -6,7 +6,7 @@ import torch
 from torchmetrics import MetricCollection
 
 
-class BasicDiffusionModel(pl.LightningModule):
+class UnconditionalDiffusionModel(pl.LightningModule):
     """Pytorch lignting module that wraps a diffusion model composed of a
     noise prediction model and a noise scheduler coming from the diffusers
     library: https://huggingface.co/docs/diffusers/index."""
@@ -50,7 +50,7 @@ class BasicDiffusionModel(pl.LightningModule):
         noise = torch.randn(x.shape, dtype=torch.float32, device=x.device)
         timesteps = torch.randint(
             0,
-            self.scheduler.num_train_timesteps,
+            self.scheduler.config.num_train_timesteps,
             (x.shape[0],),
             dtype=torch.int32,
             device=x.device,
@@ -113,7 +113,7 @@ class BasicDiffusionModel(pl.LightningModule):
         return loss
 
     def predict_step(self, batch: dict, batch_idx: int) -> torch.Tensor:
-        """Predicts the output of the model.
+        """Performs an unconditioned inference step.
 
         Args:
             batch (dict): A batch of data.
@@ -124,7 +124,7 @@ class BasicDiffusionModel(pl.LightningModule):
         """
         x = batch[0]
 
-        for t in self.scheduler.timesteps:
+        for t in self.scheduler.config.timesteps:
             noisy_residual = self.model(x, t).sample
             previous_noisy_x = self.scheduler.step(noisy_residual, t, x)
             x = previous_noisy_x
