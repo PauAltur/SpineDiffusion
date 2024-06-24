@@ -18,6 +18,7 @@ class UnconditionalDiffusionModel(pl.LightningModule):
         loss,
         metrics,
         model_ckpt: Optional[str] = None,
+        input_shape: tuple = (1, 1, 1, 128, 128),
         **kwargs,
     ):
         """Initializes the model.
@@ -35,8 +36,9 @@ class UnconditionalDiffusionModel(pl.LightningModule):
         self.scheduler = scheduler
         self.loss = loss
         self.metrics = MetricCollection(metrics)
+        self.example_input_array = torch.randn(input_shape, dtype=torch.float32)
 
-    def step(self, batch: dict) -> torch.Tensor:
+    def forward(self, batch: dict) -> torch.Tensor:
         """Computes a training/validation/test step.
 
         Args:
@@ -76,9 +78,9 @@ class UnconditionalDiffusionModel(pl.LightningModule):
         Returns:
             loss (torch.Tensor): The loss value.
         """
-        loss, metrics = self.step(batch)
+        loss, metrics = self.forward(batch)
 
-        self.log("train_loss", loss)
+        self.log("train_loss", loss, prog_bar=True, on_step=True, on_epoch=True)
         self.log_dict(metrics)
         return loss
 
@@ -92,8 +94,8 @@ class UnconditionalDiffusionModel(pl.LightningModule):
         Returns:
             loss (torch.Tensor): The loss value.
         """
-        loss, metrics = self.step(batch)
-        self.log("val_loss", loss)
+        loss, metrics = self.forward(batch)
+        self.log("val_loss", loss, prog_bar=True, on_step=True, on_epoch=True)
         self.log_dict(metrics)
         return loss
 
@@ -107,7 +109,7 @@ class UnconditionalDiffusionModel(pl.LightningModule):
         Returns:
             loss (torch.Tensor): The loss value.
         """
-        loss, metrics = self.step(batch)
+        loss, metrics = self.forward(batch)
         self.log("test_loss", loss)
         self.log_dict(metrics)
         return loss
