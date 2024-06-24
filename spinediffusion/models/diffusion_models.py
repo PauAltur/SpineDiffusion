@@ -17,8 +17,6 @@ class UnconditionalDiffusionModel(pl.LightningModule):
         scheduler,
         loss,
         metrics,
-        model_ckpt: Optional[str] = None,
-        input_shape: tuple = (1, 1, 1, 128, 128),
         **kwargs,
     ):
         """Initializes the model.
@@ -27,16 +25,13 @@ class UnconditionalDiffusionModel(pl.LightningModule):
             model (diffusers.ModelMixin): Noise prediction model. Must be a subclass of torch.nn.Module.
             scheduler (diffusers.SchedulerMixin): Noise scheduler.
             loss (torch.nn.Module): Loss function.
-            model_ckpt (str, optional): Path to a model checkpoint. Defaults to None.
+            metrics (list): List of metrics to compute.
         """
         super().__init__(**kwargs)
         self.model = model
-        if model_ckpt is not None:
-            self.model.from_pretrained(model_ckpt, use_safetensors=True)
         self.scheduler = scheduler
         self.loss = loss
         self.metrics = MetricCollection(metrics)
-        self.example_input_array = torch.randn(input_shape, dtype=torch.float32)
 
     def forward(self, batch: dict) -> torch.Tensor:
         """Computes a training/validation/test step.

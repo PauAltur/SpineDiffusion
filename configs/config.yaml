@@ -4,7 +4,11 @@ trainer:
   accelerator: auto
   strategy: auto
   devices: auto
-  logger: True
+  logger:
+    class_path: pytorch_lightning.loggers.TensorBoardLogger
+    init_args:
+      save_dir: lightning_logs/
+      name: test
   callbacks:
     class_path: pytorch_lightning.callbacks.ModelCheckpoint
     init_args:
