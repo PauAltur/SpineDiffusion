@@ -7,7 +7,7 @@ trainer:
   logger:
     class_path: pytorch_lightning.loggers.TensorBoardLogger
     init_args:
-      save_dir: lightning_logs/
+      save_dir: P:/Projects/LMB_4Dspine/Iship_Pau_Altur_Pastor/4_training_logs
       name: test
   callbacks:
     class_path: pytorch_lightning.callbacks.ModelCheckpoint
@@ -46,7 +46,8 @@ data:
     val_fraction: 0.1
     test_fraction: 0.1
     num_subjects: 10
-    num_workers: 0
+    num_workers: 8
+    cache_dir: P:/Projects/LMB_4Dspine/Iship_Pau_Altur_Pastor/3_database/cache
 model:
   class_path: spinediffusion.models.diffusion_models.UnconditionalDiffusionModel
   init_args:

@@ -1,5 +1,6 @@
 # venv and other virtual environments
 **/venv/
+**/test_env/
 
 # python
 **/__pycache__/
