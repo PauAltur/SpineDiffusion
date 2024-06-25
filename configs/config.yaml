@@ -45,7 +45,7 @@ data:
     train_fraction: 0.8
     val_fraction: 0.1
     test_fraction: 0.1
-    num_subjects: 10
+    num_subjects: 1000
     num_workers: 8
     cache_dir: P:/Projects/LMB_4Dspine/Iship_Pau_Altur_Pastor/3_database/cache/
 model:
