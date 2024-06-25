@@ -63,7 +63,7 @@ class SpineDataModule(pl.LightningDataModule):
         val_keys: Optional[list] = None,
         test_keys: Optional[list] = None,
         num_subjects: Optional[int] = None,
-        exclude_patients: dict = {},
+        exclude_patients: Optional[dict] = None,
         use_cache: bool = True,
         cache_dir: str = "../../cache/",
         num_workers: int = 0,
@@ -169,6 +169,9 @@ class SpineDataModule(pl.LightningDataModule):
 
     def _exclude_patients(self):
         """Excludes patients from the dataset based on the provided dictionary."""
+        if self.exclude_patients is None:
+            return
+
         ex_patients_list = []
         for key in self.exclude_patients:
             for id in self.exclude_patients[key]:
@@ -208,7 +211,8 @@ class SpineDataModule(pl.LightningDataModule):
         self._select_n_subj_per_dataset()
 
         for back_path, meta_path in tqdm(
-            zip(self.dirs_back, self.dirs_meta), total=len(self.dirs_back)
+            zip(self.dirs_back, self.dirs_meta),
+            total=len(self.dirs_back),
         ):
             msg = (
                 f"Backscan and metadata files do not match: {back_path} and {meta_path}"
@@ -429,7 +433,7 @@ class SpineDataModule(pl.LightningDataModule):
             batch_size=self.batch_size,
             shuffle=True,
             num_workers=self.num_workers,
-            persistent_workers=True
+            persistent_workers=True,
         )
 
     def val_dataloader(self):
@@ -443,7 +447,7 @@ class SpineDataModule(pl.LightningDataModule):
             batch_size=len(self.val_data),
             shuffle=False,
             num_workers=self.num_workers,
-            persistent_workers=True
+            persistent_workers=True,
         )
 
     def test_dataloader(self):
@@ -457,5 +461,5 @@ class SpineDataModule(pl.LightningDataModule):
             batch_size=len(self.test_data),
             shuffle=False,
             num_workers=self.num_workers,
-            persistent_workers=True
+            persistent_workers=True,
         )

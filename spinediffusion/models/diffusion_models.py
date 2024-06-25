@@ -22,7 +22,8 @@ class UnconditionalDiffusionModel(pl.LightningModule):
         """Initializes the model.
 
         Args:
-            model (diffusers.ModelMixin): Noise prediction model. Must be a subclass of torch.nn.Module.
+            model (diffusers.ModelMixin): Noise prediction model.
+            Must be a subclass of torch.nn.Module.
             scheduler (diffusers.SchedulerMixin): Noise scheduler.
             loss (torch.nn.Module): Loss function.
             metrics (list): List of metrics to compute.
@@ -30,6 +31,7 @@ class UnconditionalDiffusionModel(pl.LightningModule):
         super().__init__(**kwargs)
         self.model = model
         self.scheduler = scheduler
+        self.scheduler.device = self.device
         self.loss = loss
         self.metrics = MetricCollection(metrics)
 
@@ -44,13 +46,13 @@ class UnconditionalDiffusionModel(pl.LightningModule):
         """
         x = batch[0]
 
-        noise = torch.randn(x.shape, dtype=torch.float32, device=x.device)
+        noise = torch.randn(x.shape, dtype=torch.float32, device=self.device)
         timesteps = torch.randint(
             0,
             self.scheduler.config.num_train_timesteps,
             (x.shape[0],),
             dtype=torch.int32,
-            device=x.device,
+            device=self.device,
         )
 
         noisy_x = self.scheduler.add_noise(x, noise, timesteps)
@@ -109,7 +111,7 @@ class UnconditionalDiffusionModel(pl.LightningModule):
         self.log_dict(metrics)
         return loss
 
-    def predict_step(self, batch: dict, batch_idx: int) -> torch.Tensor:
+    def predict_step(self, batch: dict) -> torch.Tensor:
         """Performs an unconditioned inference step.
 
         Args:
@@ -119,11 +121,11 @@ class UnconditionalDiffusionModel(pl.LightningModule):
         Returns:
             loss (torch.Tensor): The loss value.
         """
-        x = batch[0]
+        x = batch
 
-        for t in self.scheduler.config.timesteps:
+        for t in self.scheduler.timesteps:
             noisy_residual = self.model(x, t).sample
-            previous_noisy_x = self.scheduler.step(noisy_residual, t, x)
+            previous_noisy_x = self.scheduler.step(noisy_residual, t, x).prev_sample
             x = previous_noisy_x
 
         return x
