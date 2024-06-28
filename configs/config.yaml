@@ -8,13 +8,13 @@ trainer:
     class_path: pytorch_lightning.loggers.TensorBoardLogger
     init_args:
       save_dir: P:/Projects/LMB_4Dspine/Iship_Pau_Altur_Pastor/4_training_logs
-      name: test
+      name: depthmap
   callbacks:
     class_path: pytorch_lightning.callbacks.ModelCheckpoint
     init_args:
       monitor: val_loss
       mode: min
-  max_epochs: 50
+  max_epochs: 100
   log_every_n_steps: 1
 data:
   class_path: spinediffusion.datamodule.datamodule.SpineDataModule
@@ -45,7 +45,6 @@ data:
     train_fraction: 0.8
     val_fraction: 0.1
     test_fraction: 0.1
-    num_subjects: 10
     num_workers: 8
     cache_dir: P:/Projects/LMB_4Dspine/Iship_Pau_Altur_Pastor/3_database/cache
 model:
@@ -58,9 +57,9 @@ model:
         in_channels: &num_channels 1
         out_channels: *num_channels
         layers_per_block: 2
-        block_out_channels: [32, 32, 64, 64]
-        down_block_types: ["DownBlock2D", "DownBlock2D", "AttnDownBlock2D", "DownBlock2D"]
-        up_block_types: ["UpBlock2D", "UpBlock2D", "AttnUpBlock2D", "UpBlock2D"]
+        block_out_channels: [32, 32, 64, 64, 128, 128]
+        down_block_types: ["DownBlock2D", "DownBlock2D", "DownBlock2D", "DownBlock2D", "AttnDownBlock2D", "DownBlock2D"]
+        up_block_types: ["UpBlock2D", "UpBlock2D", "UpBlock2D", "UpBlock2D", "AttnUpBlock2D", "UpBlock2D"]
     scheduler:
       class_path: diffusers.DDPMScheduler
       init_args:
