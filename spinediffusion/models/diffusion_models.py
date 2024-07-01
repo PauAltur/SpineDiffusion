@@ -4,6 +4,7 @@ import diffusers
 import pytorch_lightning as pl
 import torch
 from torchmetrics import MetricCollection
+from tqdm import tqdm
 
 
 class UnconditionalDiffusionModel(pl.LightningModule):
@@ -121,9 +122,9 @@ class UnconditionalDiffusionModel(pl.LightningModule):
         Returns:
             loss (torch.Tensor): The loss value.
         """
-        x = batch
+        x = batch.to(self.device)
 
-        for t in self.scheduler.timesteps:
+        for t in tqdm(self.scheduler.timesteps):
             noisy_residual = self.model(x, t).sample
             previous_noisy_x = self.scheduler.step(noisy_residual, t, x).prev_sample
             x = previous_noisy_x

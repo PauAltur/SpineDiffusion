@@ -119,6 +119,7 @@ class SpineDataModule(pl.LightningDataModule):
         self.use_cache = use_cache
         self.cache_dir = Path(cache_dir)
         self.num_workers = num_workers
+        self.save_hyperparameters()
 
     def setup(self, stage: Optional[str]):
         """Setup method for the SpineDataModule class. This method is called
@@ -211,7 +212,7 @@ class SpineDataModule(pl.LightningDataModule):
         self._select_n_subj_per_dataset()
 
         for back_path, meta_path in tqdm(
-            zip(self.dirs_back, self.dirs_meta),
+            zip(self.dirs_back, self.dirs_meta, strict=True),
             total=len(self.dirs_back),
         ):
             msg = (
