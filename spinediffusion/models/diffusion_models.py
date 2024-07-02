@@ -36,11 +36,11 @@ class UnconditionalDiffusionModel(pl.LightningModule):
         self.loss = loss
         self.metrics = MetricCollection(metrics)
 
-    def forward(self, batch: dict) -> torch.Tensor:
+    def forward(self, batch: list) -> torch.Tensor:
         """Computes a training/validation/test step.
 
         Args:
-            batch (dict): A batch of data.
+            batch (list): A batch of data.
 
         Returns:
             loss (torch.Tensor): The loss value.
@@ -66,11 +66,11 @@ class UnconditionalDiffusionModel(pl.LightningModule):
 
         return loss, metrics
 
-    def training_step(self, batch: dict, batch_idx: int) -> torch.Tensor:
+    def training_step(self, batch: list, batch_idx: int) -> torch.Tensor:
         """Computes a training step.
 
         Args:
-            batch (dict): A batch of data.
+            batch (list): A batch of data.
             batch_idx (int): The index of the batch.
 
         Returns:
@@ -82,11 +82,11 @@ class UnconditionalDiffusionModel(pl.LightningModule):
         self.log_dict(metrics)
         return loss
 
-    def validation_step(self, batch: dict, batch_idx: int) -> torch.Tensor:
+    def validation_step(self, batch: list, batch_idx: int) -> torch.Tensor:
         """Computes a validation step.
 
         Args:
-            batch (dict): A batch of data.
+            batch (list): A batch of data.
             batch_idx (int): The index of the batch.
 
         Returns:
@@ -97,11 +97,11 @@ class UnconditionalDiffusionModel(pl.LightningModule):
         self.log_dict(metrics)
         return loss
 
-    def test_step(self, batch: dict, batch_idx: int) -> torch.Tensor:
+    def test_step(self, batch: list, batch_idx: int) -> torch.Tensor:
         """Computes a test step.
 
         Args:
-            batch (dict): A batch of data.
+            batch (list): A batch of data.
             batch_idx (int): The index of the batch.
 
         Returns:
@@ -112,21 +112,21 @@ class UnconditionalDiffusionModel(pl.LightningModule):
         self.log_dict(metrics)
         return loss
 
-    def predict_step(self, batch: dict) -> torch.Tensor:
+    def predict_step(self, batch: list, batch_idx: int) -> torch.Tensor:
         """Performs an unconditioned inference step.
 
         Args:
-            batch (dict): A batch of data.
+            batch (list): A batch of data.
             batch_idx (int): The index of the batch.
 
         Returns:
             loss (torch.Tensor): The loss value.
         """
-        x = batch.to(self.device)
+        x = batch[0]
 
         for t in tqdm(self.scheduler.timesteps):
-            noisy_residual = self.model(x, t).sample
-            previous_noisy_x = self.scheduler.step(noisy_residual, t, x).prev_sample
-            x = previous_noisy_x
+            with torch.no_grad():
+                noisy_residual = self.model(x, t).sample
+            x = self.scheduler.step(noisy_residual, t, x).prev_sample
 
         return x

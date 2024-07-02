@@ -32,10 +32,12 @@ class LogGeneratedImages(Callback):
     def on_train_epoch_end(self, trainer, pl_module):
         if trainer.current_epoch % self.every_n_epochs != 0:
             return
-        noise = torch.randn(
-            self.num_images, self.num_channels, self.height, self.width
-        ).to(pl_module.device)
-        generated = pl_module.predict_step(noise)
+        noise = [
+            torch.randn(self.num_images, self.num_channels, self.height, self.width).to(
+                pl_module.device
+            )
+        ]
+        generated = pl_module.predict_step(noise, 1)
         trainer.logger.experiment.add_image(
             "train/generated/",
             generated,

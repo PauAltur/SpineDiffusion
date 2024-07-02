@@ -67,6 +67,7 @@ class SpineDataModule(pl.LightningDataModule):
         use_cache: bool = True,
         cache_dir: str = "../../cache/",
         num_workers: int = 0,
+        predict_size: int = 1,
     ):
         """Constructor for the SpineDataModule class.
 
@@ -119,6 +120,7 @@ class SpineDataModule(pl.LightningDataModule):
         self.use_cache = use_cache
         self.cache_dir = Path(cache_dir)
         self.num_workers = num_workers
+        self.predict_size = predict_size
         self.save_hyperparameters()
 
     def setup(self, stage: Optional[str]):
@@ -352,6 +354,12 @@ class SpineDataModule(pl.LightningDataModule):
         self.train_data = self._compose_dataset(self.train_keys)
         self.val_data = self._compose_dataset(self.val_keys)
         self.test_data = self._compose_dataset(self.test_keys)
+        self.predict_data = TensorDataset(
+            torch.randn(
+                (self.predict_size, 1, *self.train_data[0][0].shape[1:]),
+                dtype=torch.float32,
+            )
+        )
 
     def _check_split_args(self):
         """Checks the arguments for splitting the data into training, validation,
@@ -460,6 +468,20 @@ class SpineDataModule(pl.LightningDataModule):
         return DataLoader(
             self.test_data,
             batch_size=len(self.test_data),
+            shuffle=False,
+            num_workers=self.num_workers,
+            persistent_workers=True,
+        )
+
+    def predict_dataloader(self):
+        """Creates the predict dataloader.
+
+        Returns:
+            predict_dataloader (torch.utils.data.DataLoader): The predict dataloader.
+        """
+        return DataLoader(
+            self.predict_data,
+            batch_size=self.predict_size,
             shuffle=False,
             num_workers=self.num_workers,
             persistent_workers=True,
