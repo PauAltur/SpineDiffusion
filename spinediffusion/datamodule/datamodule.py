@@ -212,7 +212,7 @@ class SpineDataModule(pl.LightningDataModule):
         self._select_n_subj_per_dataset()
 
         for back_path, meta_path in tqdm(
-            zip(self.dirs_back, self.dirs_meta, strict=True),
+            zip(self.dirs_back, self.dirs_meta),  # noqa: B905
             total=len(self.dirs_back),
         ):
             msg = (
