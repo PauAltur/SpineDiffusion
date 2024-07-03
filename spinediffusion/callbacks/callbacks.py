@@ -1,5 +1,9 @@
+import glob
+
+import pandas as pd
 import torch
 from pytorch_lightning.callbacks import Callback
+from tensorflow.python.summary.summary_iterator import summary_iterator
 
 
 class LogGeneratedImages(Callback):
@@ -44,3 +48,22 @@ class LogGeneratedImages(Callback):
             global_step=trainer.global_step,
             dataformats="NCHW",
         )
+
+
+class GenerateCSVLog(Callback):
+    """Pytorch Lightning callback that generates CSV logs at the end of training."""
+
+    def on_train_end(self, trainer, pl_module):
+        """Transforms tf events files to csv files and saves
+        them in the same directory as the tf events files.
+        """
+        events_dir = trainer.logger.save_dir
+        events_file = glob.glob(str(events_dir / "events.out.tfevents.*"))[0]
+
+        df = pd.DataFrame(columns=["time", "tag", "value"])
+        for event in summary_iterator(events_file):
+            for value in event.summary.value:
+                df.loc[len(df)] = [event.wall_time, value.tag, value.simple_value]
+
+        df.to_csv(f"{events_dir}/events.csv", index=False)
+        print(f"Saved {events_dir}/events.csv")
