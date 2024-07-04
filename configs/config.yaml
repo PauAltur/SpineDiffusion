@@ -8,7 +8,7 @@ trainer:
     class_path: pytorch_lightning.loggers.TensorBoardLogger
     init_args:
       save_dir: P:/Projects/LMB_4Dspine/Iship_Pau_Altur_Pastor/4_training_logs
-      name: depthmap
+      name: test
   callbacks:
     - class_path: pytorch_lightning.callbacks.ModelCheckpoint
       init_args:
@@ -17,10 +17,11 @@ trainer:
     - class_path: spinediffusion.callbacks.callbacks.LogGeneratedImages
       init_args:
         every_n_epochs: 10
-        num_images: 16
+        num_images: 1
         num_channels: &num_channels 1
         height: &height 128
         width: &width 128
+    - class_path: spinediffusion.callbacks.callbacks.GenerateCSVLog
   max_epochs: 100
   log_every_n_steps: 1
 data:
@@ -89,5 +90,5 @@ optimizer:
 lr_scheduler:
   class_path: torch.optim.lr_scheduler.ExponentialLR
   init_args:
-    gamma: 0.1
+    gamma: 0.001
 ckpt_path: null

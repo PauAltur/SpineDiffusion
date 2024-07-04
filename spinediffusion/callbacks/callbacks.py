@@ -57,13 +57,16 @@ class GenerateCSVLog(Callback):
         """Transforms tf events files to csv files and saves
         them in the same directory as the tf events files.
         """
-        events_dir = trainer.logger.save_dir
-        events_file = glob.glob(str(events_dir / "events.out.tfevents.*"))[0]
+        events_dir = trainer.logger.log_dir
+        events_file = glob.glob(events_dir + "/events.out.tfevents.*")[0]
 
         df = pd.DataFrame(columns=["time", "tag", "value"])
         for event in summary_iterator(events_file):
             for value in event.summary.value:
                 df.loc[len(df)] = [event.wall_time, value.tag, value.simple_value]
+
+        df = df.sort_values(by=["tag", "time"])
+        df["step"] = df.groupby("tag").cumcount()
 
         df.to_csv(f"{events_dir}/events.csv", index=False)
         print(f"Saved {events_dir}/events.csv")

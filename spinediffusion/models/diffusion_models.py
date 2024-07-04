@@ -122,7 +122,7 @@ class UnconditionalDiffusionModel(pl.LightningModule):
         Returns:
             loss (torch.Tensor): The loss value.
         """
-        x = batch[0]
+        x = batch[0].to(self.device)
 
         for t in tqdm(self.scheduler.timesteps):
             with torch.no_grad():
