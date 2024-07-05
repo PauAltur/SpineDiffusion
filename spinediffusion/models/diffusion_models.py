@@ -31,7 +31,11 @@ class UnconditionalDiffusionModel(pl.LightningModule):
         """
         super().__init__(**kwargs)
         self.model = model
-        self.scheduler = scheduler
+        if isinstance(scheduler, str):
+            self.scheduler = eval(scheduler)()
+        else:
+            self.scheduler = scheduler
+
         self.scheduler.device = self.device
         self.loss = loss
         self.metrics = MetricCollection(metrics)
@@ -121,7 +125,9 @@ class UnconditionalDiffusionModel(pl.LightningModule):
         self.log_dict(metrics, on_step=True, on_epoch=True, sync_dist=True)
         return loss
 
-    def predict_step(self, batch: list, batch_idx: int) -> torch.Tensor:
+    def predict_step(
+        self, batch: list, batch_idx: int, timesteps: Optional[int] = None
+    ) -> torch.Tensor:
         """Performs an unconditioned inference step.
 
         Args:
@@ -133,8 +139,17 @@ class UnconditionalDiffusionModel(pl.LightningModule):
         """
         x = batch[0].to(self.device)
 
-        for t in tqdm(self.scheduler.timesteps):
+        if timesteps is None:
+            timesteps = self.scheduler.timesteps
+        else:
+            timesteps = torch.tensor(
+                range(timesteps), device=self.device, dtype=torch.int32
+            )
+
+        for t in tqdm(timesteps):
             with torch.no_grad():
+                if hasattr(self.scheduler, "scale_model_input"):
+                    x = self.scheduler.scale_model_input(x, t)
                 noisy_residual = self.model(x, t).sample
             x = self.scheduler.step(noisy_residual, t, x).prev_sample
 

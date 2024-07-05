@@ -70,8 +70,6 @@ model:
         up_block_types: ["UpBlock2D", "UpBlock2D", "UpBlock2D", "UpBlock2D", "AttnUpBlock2D", "UpBlock2D"]
     scheduler:
       class_path: diffusers.DDPMScheduler
-      init_args:
-        num_train_timesteps: 1000
     loss:
       class_path: torch.nn.MSELoss
       init_args:
