@@ -140,6 +140,8 @@ class UnconditionalDiffusionModel(pl.LightningModule):
         x = batch[0].to(self.device)
 
         if timesteps is None:
+            if hasattr(self.scheduler, "set_timesteps"):
+                self.scheduler.set_timesteps(self.scheduler.config.num_train_timesteps)
             timesteps = self.scheduler.timesteps
         else:
             timesteps = torch.tensor(
