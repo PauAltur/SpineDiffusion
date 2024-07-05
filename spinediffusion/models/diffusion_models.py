@@ -78,8 +78,15 @@ class UnconditionalDiffusionModel(pl.LightningModule):
         """
         loss, metrics = self.forward(batch)
 
-        self.log("train_loss", loss, prog_bar=True, on_step=True, on_epoch=True)
-        self.log_dict(metrics)
+        self.log(
+            "train_loss",
+            loss,
+            prog_bar=True,
+            on_step=True,
+            on_epoch=True,
+            sync_dist=True,
+        )
+        self.log_dict(metrics, on_step=True, on_epoch=True, sync_dist=True)
         return loss
 
     def validation_step(self, batch: list, batch_idx: int) -> torch.Tensor:
@@ -93,8 +100,10 @@ class UnconditionalDiffusionModel(pl.LightningModule):
             loss (torch.Tensor): The loss value.
         """
         loss, metrics = self.forward(batch)
-        self.log("val_loss", loss, prog_bar=True, on_step=True, on_epoch=True)
-        self.log_dict(metrics)
+        self.log(
+            "val_loss", loss, prog_bar=True, on_step=True, on_epoch=True, sync_dist=True
+        )
+        self.log_dict(metrics, on_step=True, on_epoch=True, sync_dist=True)
         return loss
 
     def test_step(self, batch: list, batch_idx: int) -> torch.Tensor:
@@ -108,8 +117,8 @@ class UnconditionalDiffusionModel(pl.LightningModule):
             loss (torch.Tensor): The loss value.
         """
         loss, metrics = self.forward(batch)
-        self.log("test_loss", loss)
-        self.log_dict(metrics)
+        self.log("test_loss", loss, on_step=True, on_epoch=True, sync_dist=True)
+        self.log_dict(metrics, on_step=True, on_epoch=True, sync_dist=True)
         return loss
 
     def predict_step(self, batch: list, batch_idx: int) -> torch.Tensor:
