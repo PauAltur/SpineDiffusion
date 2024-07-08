@@ -121,6 +121,9 @@ class SpineDataModule(pl.LightningDataModule):
         self.cache_dir = Path(cache_dir)
         self.num_workers = num_workers
         self.predict_size = predict_size
+        import pdb
+
+        pdb.set_trace()
         self.save_hyperparameters()
 
     def setup(self, stage: Optional[str]):
