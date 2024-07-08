@@ -5,31 +5,31 @@ trainer:
   strategy: auto
   devices: auto
   logger:
-    class_path: pytorch_lightning.loggers.TensorBoardLogger
+    class_path: TensorBoardLogger
     init_args:
       save_dir: P:/Projects/LMB_4Dspine/Iship_Pau_Altur_Pastor/4_training_logs
       name: test
   callbacks:
-    - class_path: pytorch_lightning.callbacks.ModelCheckpoint
+    - class_path: ModelCheckpoint
       init_args:
         monitor: val_loss
         mode: min
-    - class_path: spinediffusion.callbacks.callbacks.LogGeneratedImages
+    - class_path: LogGeneratedImages
       init_args:
         every_n_epochs: 10
         num_images: 1
         num_channels: &num_channels 1
         height: &height 128
         width: &width 128
-    - class_path: spinediffusion.callbacks.callbacks.GenerateCSVLog
+    - class_path: GenerateCSVLog
   max_epochs: 100
   log_every_n_steps: 1
 data:
-  class_path: spinediffusion.data.datamodule.SpineDataModule
+  class_path: SpineDataModule
   init_args:
     data_dir: P:/Projects/LMB_4Dspine/back_scan_database
     batch_size: 10
-    transform_args:
+    transforms:
       - class_path: Resample3DCurve
         init_args:
           transform_number: 0
@@ -52,7 +52,7 @@ data:
         init_args:
           transform_number: 3
           se_size: [3, 3]
-      - classpath: Tensorize
+      - class_path: Tensorize
         init_args:
           transform_number: 4
     train_fraction: 0.8
@@ -61,10 +61,10 @@ data:
     num_workers: 8
     cache_dir: P:/Projects/LMB_4Dspine/Iship_Pau_Altur_Pastor/3_database/cache
 model:
-  class_path: spinediffusion.models.diffusion_models.UnconditionalDiffusionModel
+  class_path: UnconditionalDiffusionModel
   init_args:
     model:
-      class_path: diffusers.UNet2DModel
+      class_path: UNet2DModel
       init_args:
         sample_size: *height
         in_channels: *num_channels
@@ -74,24 +74,25 @@ model:
         down_block_types: ["DownBlock2D", "DownBlock2D", "DownBlock2D", "DownBlock2D", "AttnDownBlock2D", "DownBlock2D"]
         up_block_types: ["UpBlock2D", "UpBlock2D", "UpBlock2D", "UpBlock2D", "AttnUpBlock2D", "UpBlock2D"]
     scheduler:
-      class_path: diffusers.DDPMScheduler
+      class_path: DDPMScheduler
+      init_args:
     loss:
-      class_path: torch.nn.MSELoss
+      class_path: MSELoss
       init_args:
         reduction: mean
     metrics:
       MSELoss:
-        class_path: torchmetrics.MeanSquaredError
+        class_path: MeanSquaredError
       SSIM:
-        class_path: torchmetrics.image.StructuralSimilarityIndexMeasure
+        class_path: StructuralSimilarityIndexMeasure
       PSNR:
-        class_path: torchmetrics.image.PeakSignalNoiseRatio
+        class_path: PeakSignalNoiseRatio
 optimizer:
-  class_path: torch.optim.Adam
+  class_path: Adam
   init_args:
     lr: 0.001
 lr_scheduler:
-  class_path: torch.optim.lr_scheduler.ExponentialLR
+  class_path: ExponentialLR
   init_args:
     gamma: 0.1
 ckpt_path: null

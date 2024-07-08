@@ -26,6 +26,9 @@ class Resample3DCurve(nn.Module):
         self.n_points = n_points
         self.transform_number = transform_number
 
+    def __str__(self) -> str:
+        return f"Resample3DCurve" "\n----------------\n" f"n_points: {self.n_points}"
+
     def _remove_duplicate_points(self, curve: npt.NDArray) -> npt.NDArray:
         """Remove duplicate points from a 3D curve.
 
@@ -87,6 +90,15 @@ class ResamplePointCloud(nn.Module):
         self.method = method
         self.transform_number = transform_number
 
+    def __str__(self) -> str:
+        return (
+            f"ResamplePointCloud"
+            "\n----------------\n"
+            f"n_points: {self.n_points}"
+            "\n"
+            f"method: {self.method}"
+        )
+
     def forward(self, data_id: dict) -> dict:
         """Resample the "backscan" point cloud in the data_id dictionary.
 
@@ -146,6 +158,9 @@ class ConstantNormalization(nn.Module):
         self.norm = norm
         self.transform_number = transform_number
 
+    def __str__(self) -> str:
+        return f"ConstantNormalization" "\n----------------\n" f"norm: {self.norm}"
+
     def forward(self, data_id: dict) -> dict:
         """Normalizes the data by the user-defined constant.
 
@@ -186,6 +201,13 @@ class SpineLengthNormalization(nn.Module):
         super().__init__()
         self.norm_length = norm_length
         self.transform_number = transform_number
+
+    def __str__(self) -> str:
+        return (
+            f"SpineLengthNormalization"
+            "\n----------------\n"
+            f"norm_length: {self.norm_length}"
+        )
 
     def forward(self, data_id: dict) -> dict:
         """Normalizes the data so that the length of the spine is equal
@@ -257,6 +279,18 @@ class ProjectToPlane(nn.Module):
         self.method = method
         self.transform_number = transform_number
         self.z_lims = z_lims
+
+    def __str__(self) -> str:
+        return (
+            f"ProjectToPlane"
+            "\n----------------"
+            f"\nheight: {self.height}"
+            f"\nwidth: {self.width}"
+            f"\nspine_factor: {self.spine_factor}"
+            f"\nintensity: {self.intensity}"
+            f"\nmethod: {self.method}"
+            f"\nz_lims: {self.z_lims}"
+        )
 
     def _scale_point_cloud(self, pc: npt.NDArray, special_points: dict) -> npt.NDArray:
         """Scale the point cloud to the desired dimensions.
@@ -374,6 +408,9 @@ class Closing(nn.Module):
         self.se_size = se_size
         self.transform_number = transform_number
 
+    def __str__(self) -> str:
+        return f"Closing" "\n----------------" f"\nse_size: {self.se_size}"
+
     def forward(self, data_id: dict) -> dict:
         """Close the holes in the depth map.
 
@@ -405,6 +442,9 @@ class Tensorize(nn.Module):
         """
         super().__init__()
         self.transform_number = transform_number
+
+    def __str__(self) -> str:
+        return "Tensorize\n----------------"
 
     def forward(self, data_id: dict) -> dict:
         """Converts the data to tensors.

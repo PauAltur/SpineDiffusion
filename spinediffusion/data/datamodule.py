@@ -15,25 +15,9 @@ from tqdm import tqdm
 from spinediffusion.utils.hashing import hash_dict
 from spinediffusion.utils.misc import dumper
 
-from .transforms.closing import Closing
-from .transforms.normalizing import ConstantNormalization, SpineLengthNormalization
-from .transforms.projecting import ProjectToPlane
-from .transforms.resampling import Resample3DCurve, ResamplePointCloud
-from .transforms.tensoring import Tensorize
-
-TRANSFORMS = {
-    "constant_normalize": ConstantNormalization,
-    "spine_length_normalize": SpineLengthNormalization,
-    "resample_3d_curve": Resample3DCurve,
-    "project_to_plane": ProjectToPlane,
-    "resample_point_cloud": ResamplePointCloud,
-    "close_depthmap": Closing,
-    "tensorize": Tensorize,
-}
-
 HASH_ARGS = {
     "data_dir",
-    "transform_args",
+    "transforms",
     "num_subjects",
     "exclude_patients",
 }
@@ -55,7 +39,7 @@ class SpineDataModule(pl.LightningDataModule):
         self,
         data_dir: str,
         batch_size: int,
-        transform_args: dict,
+        transforms: list,
         train_fraction: Optional[float] = None,
         val_fraction: Optional[float] = None,
         test_fraction: Optional[float] = None,
@@ -74,10 +58,9 @@ class SpineDataModule(pl.LightningDataModule):
         Args:
             data_dir (str): The root directory of the dataset.
             batch_size (int): The batch size for the training dataloader.
-            transform_args (dict): A dictionary containing the arguments for the
-                data preprocessing transforms. For more information on the
-                available transforms, please refer to the README.md in the
-                transforms subdirectory.
+            transforms (list): A list containing the transforms to apply to the data.
+                The transforms must have a transform_number attribute that specifies
+                the order in which the transforms are applied.
             train_fraction (Optional[float], optional): The fraction of the dataset
                 to use as a training set. Defaults to None.
             val_fraction (Optional[float], optional):  The fraction of the dataset
@@ -111,7 +94,7 @@ class SpineDataModule(pl.LightningDataModule):
         self.train_keys = train_keys
         self.val_keys = val_keys
         self.test_keys = test_keys
-        self.transform_args = transform_args
+        self.transforms = transforms
         self.meta = {}
         self.backs = {}
         self.data = {}
@@ -121,9 +104,6 @@ class SpineDataModule(pl.LightningDataModule):
         self.cache_dir = Path(cache_dir)
         self.num_workers = num_workers
         self.predict_size = predict_size
-        import pdb
-
-        pdb.set_trace()
         self.save_hyperparameters()
 
     def setup(self, stage: Optional[str]):
@@ -308,18 +288,18 @@ class SpineDataModule(pl.LightningDataModule):
         into a single transform using torchvision.transforms.Compose.
         """
         print("Preprocessing data...")
-        transforms = []
-        for i in range(len(self.transform_args)):
-            for key, value in self.transform_args.items():
-                if value["transform_number"] == i:
-                    transforms.append(TRANSFORMS[key](**value))
-                    print(f"{key}")
-                    print("---------------------------")
-                    for k, v in value.items():
-                        print(f"{k}: {v}")
-                    print("\n")
+        transform_numbers = [t.transform_number for t in self.transforms]
 
-        self.transforms = v2.Compose(transforms)
+        msg = "Transform numbers should be unique, consecutive and start from 0."
+        assert sorted(transform_numbers) == list(range(len(self.transforms))), msg
+
+        self.transforms.sort(key=lambda t: t.transform_number)
+        for transform in self.transforms:
+            print(transform)
+            print("\n")
+
+        self.transforms = v2.Compose(self.transforms)
+
         for unique_id in tqdm(self.data.keys()):
             self.data[unique_id] = self.transforms(self.data[unique_id])
 
