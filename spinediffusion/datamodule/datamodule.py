@@ -112,6 +112,9 @@ class SpineDataModule(pl.LightningDataModule):
         self.val_keys = val_keys
         self.test_keys = test_keys
         self.transform_args = transform_args
+        import pdb
+
+        pdb.set_trace()
         self.meta = {}
         self.backs = {}
         self.data = {}
