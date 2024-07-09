@@ -12,6 +12,15 @@ from torch.utils.data import DataLoader, TensorDataset
 from torchvision.transforms import v2
 from tqdm import tqdm
 
+from spinediffusion.data.transforms import (
+    Closing,
+    ConstantNormalization,
+    ProjectToPlane,
+    Resample3DCurve,
+    ResamplePointCloud,
+    SpineLengthNormalization,
+    Tensorize,
+)
 from spinediffusion.utils.hashing import hash_dict
 from spinediffusion.utils.misc import dumper
 
@@ -95,6 +104,9 @@ class SpineDataModule(pl.LightningDataModule):
         self.val_keys = val_keys
         self.test_keys = test_keys
         self.transforms = transforms
+        import pdb
+
+        pdb.set_trace()
         self.meta = {}
         self.backs = {}
         self.data = {}
@@ -288,6 +300,26 @@ class SpineDataModule(pl.LightningDataModule):
         into a single transform using torchvision.transforms.Compose.
         """
         print("Preprocessing data...")
+        self._prepare_transforms()
+
+        for unique_id in tqdm(self.data.keys()):
+            self.data[unique_id] = self.transforms(self.data[unique_id])
+
+    def _prepare_transforms(self):
+        """Prepares the transforms for the data preprocessing. The transforms
+        are instantiated, sorted according to their transform_number and composed into a
+        single transform using torchvision.transforms.Compose. The composed
+        transform is then stored in self.transforms as a torchvision.transforms.Compose
+        object. We also make sure that the transform numbers are unique, consecutive
+        and start from 0. If not, an AssertionError is raised.
+        """
+        # TODO: This should be directly handled by PyTorch Lightning CLI rather than me
+        # having to instantiate them by hand.
+        transforms = []
+        for transform in self.transforms:
+            transforms.append(eval(transform["class_path"])(**transform["init_args"]))
+        self.transforms = transforms
+
         transform_numbers = [t.transform_number for t in self.transforms]
 
         msg = "Transform numbers should be unique, consecutive and start from 0."
@@ -299,9 +331,6 @@ class SpineDataModule(pl.LightningDataModule):
             print("\n")
 
         self.transforms = v2.Compose(self.transforms)
-
-        for unique_id in tqdm(self.data.keys()):
-            self.data[unique_id] = self.transforms(self.data[unique_id])
 
     def _save_cache(self):
         """Saves the data to a cache file for future use. The cache file
@@ -396,7 +425,7 @@ class SpineDataModule(pl.LightningDataModule):
         Returns:
             dataset (SpineDataset): The composed dataset.
         """
-        if "project_to_plane" in self.transform_args:
+        if "ProjectToPlane" in str(self.transforms):
             input_key = "depth_map"
         else:
             input_key = "backscan"

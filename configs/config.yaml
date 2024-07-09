@@ -64,7 +64,7 @@ model:
   class_path: UnconditionalDiffusionModel
   init_args:
     model:
-      class_path: UNet2DModel
+      class_path: diffusers.UNet2DModel
       init_args:
         sample_size: *height
         in_channels: *num_channels
@@ -74,19 +74,18 @@ model:
         down_block_types: ["DownBlock2D", "DownBlock2D", "DownBlock2D", "DownBlock2D", "AttnDownBlock2D", "DownBlock2D"]
         up_block_types: ["UpBlock2D", "UpBlock2D", "UpBlock2D", "UpBlock2D", "AttnUpBlock2D", "UpBlock2D"]
     scheduler:
-      class_path: DDPMScheduler
-      init_args:
+      class_path: diffusers.DDPMScheduler
     loss:
-      class_path: MSELoss
+      class_path: torch.nn.MSELoss
       init_args:
         reduction: mean
     metrics:
       MSELoss:
-        class_path: MeanSquaredError
+        class_path: torchmetrics.MeanSquaredError
       SSIM:
-        class_path: StructuralSimilarityIndexMeasure
+        class_path: torchmetrics.image.StructuralSimilarityIndexMeasure
       PSNR:
-        class_path: PeakSignalNoiseRatio
+        class_path: torchmetrics.image.PeakSignalNoiseRatio
 optimizer:
   class_path: Adam
   init_args:
