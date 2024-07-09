@@ -21,3 +21,6 @@
 
 # temporary files
 **/temp/
+
+# windows scripts
+**/*.bat
