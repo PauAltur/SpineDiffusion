@@ -127,8 +127,15 @@ class ProjectToPlane(nn.Module):
             data_id (dict): The projected data sample. The key 'depth_map' will
             store the depth map.
         """
-        pc = np.asarray(data_id["backscan"].points)
+        backscan_pc = np.asarray(data_id["backscan"].points)
         special_points = data_id["special_points"]
-        pc = self._scale_point_cloud(pc, special_points)
-        data_id["depth_map"] = np.flip(self._compute_depth_map(pc), axis=0)
+
+        backscan_pc = self._scale_point_cloud(backscan_pc, special_points)
+
+        data_id["depth_map"] = np.flip(self._compute_depth_map(backscan_pc), axis=0)
+
+        if "esl" in data_id:
+            esl_pc = self._scale_point_cloud(data_id["esl"], special_points)
+            data_id["esl_depth_map"] = np.flip(self._compute_depth_map(esl_pc), axis=0)
+
         return data_id

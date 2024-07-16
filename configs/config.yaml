@@ -55,6 +55,7 @@ data:
     test_fraction: 0.1
     num_workers: 8
     cache_dir: P:/Projects/LMB_4Dspine/Iship_Pau_Altur_Pastor/3_database/cache
+    predict_size: 100
 model:
   class_path: spinediffusion.models.diffusion_models.UnconditionalDiffusionModel
   init_args:

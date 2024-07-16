@@ -4,50 +4,106 @@ import open3d as o3d
 import torch.nn as nn
 from scipy.interpolate import splev, splprep
 
+# class Resample3DCurve(nn.Module):
+#     """Resample a 3D curve using cubic spline interpolation."""
+
+#     def __init__(self, n_points: float, **kwargs):
+#         """Initialize the Resample3DCurve class.
+
+#         Args:
+#             n_points (float): The number of points to resample the curve to.
+#         """
+#         super().__init__()
+#         self.n_points = n_points
+
+#     def _remove_duplicate_points(self, curve: npt.NDArray) -> npt.NDArray:
+#         """Remove duplicate points from a 3D curve.
+
+#         Args:
+#             curve (npt.NDArray): A 3D curve.
+
+#         Returns:
+#             npt.NDArray: The 3D curve with duplicate points removed.
+#         """
+#         curve = np.round(curve, 5)
+#         curve = np.unique(curve, axis=0)
+#         return curve
+
+#     def resample_curve(self, curve: npt.NDArray) -> npt.NDArray:
+#         """Resample a 3D curve using cubic spline interpolation.
+
+#         Args:
+#             curve (npt.NDArray): A 3D curve to resample.
+
+#         Returns:
+#             npt.NDArray: The resampled 3D curve.
+#         """
+#         curve = self._remove_duplicate_points(curve)
+
+#         distances = np.linalg.norm(np.diff(curve, axis=0), axis=1)
+#         s = 0.1 * np.mean(distances)
+
+#         tck, u = splprep(curve.T, s=s)
+#         u_new = np.linspace(0, 1, self.n_points)
+#         curve_new = splev(u_new, tck)
+#         curve_resampled = np.vstack(curve_new).T
+
+#         return curve_resampled
+
+#     def forward(self, data_id: dict) -> dict:
+#         """Resample the "esl" and "isl" curves in the
+#         data_id dictionary.
+
+#         Args:
+#             data_id (dict): A single sample of the data to resample.
+
+#         Returns:
+#             data_id (dict): The resampled data sample.
+#         """
+#         data_id["isl"] = self.resample_curve(data_id["isl"])
+#         data_id["esl"] = self.resample_curve(data_id["esl"])
+#         return data_id
+
 
 class Resample3DCurve(nn.Module):
-    """Resample a 3D curve using cubic spline interpolation."""
-
-    def __init__(self, n_points: float, **kwargs):
-        """Initialize the Resample3DCurve class.
-
-        Args:
-            n_points (float): The number of points to resample the curve to.
-        """
+    def __init__(self, n_points):
         super().__init__()
         self.n_points = n_points
 
-    def _remove_duplicate_points(self, curve: npt.NDArray) -> npt.NDArray:
-        """Remove duplicate points from a 3D curve.
+    def _resample_curve(self, curve: npt.NDArray) -> npt.NDArray:
+        """
+        Resample the 3D curve to a specified number of points.
 
         Args:
-            curve (npt.NDArray): A 3D curve.
+            curve (np.ndarray) : The input 3D curve of shape (N, 3).
 
         Returns:
-            npt.NDArray: The 3D curve with duplicate points removed.
+            resampled_curve (np.ndarray) : The resampled 3D curve of shape (n_points, 3).
         """
-        curve = np.round(curve, 5)
-        curve = np.unique(curve, axis=0)
-        return curve
+        # Number of points in the original curve
+        N = curve.shape[0]
 
-    def resample_curve(self, curve: npt.NDArray) -> npt.NDArray:
-        """Resample a 3D curve using cubic spline interpolation.
+        # Calculate the cumulative distance along the curve
+        cum_dists = np.zeros(N)
+        for i in range(1, N):
+            cum_dists[i] = cum_dists[i - 1] + np.linalg.norm(curve[i] - curve[i - 1])
 
-        Args:
-            curve (npt.NDArray): A 3D curve to resample.
+        # Normalize the distances
+        cum_dists /= cum_dists[-1]
 
-        Returns:
-            npt.NDArray: The resampled 3D curve.
-        """
-        curve = self._remove_duplicate_points(curve)
-        tck, u = splprep(curve.T, s=0)
-        u_new = np.linspace(0, 1, self.n_points)
-        curve_new = splev(u_new, tck)
-        return np.vstack(curve_new).T
+        # Generate the new set of points along the normalized distance
+        new_distances = np.linspace(0, 1, self.n_points)
+
+        # Interpolate the curve
+        resampled_curve = np.zeros((self.n_points, 3))
+        for i in range(3):  # Interpolate for each dimension
+            resampled_curve[:, i] = np.interp(new_distances, cum_dists, curve[:, i])
+
+        return resampled_curve
 
     def forward(self, data_id: dict) -> dict:
-        """Resample the "esl" and "isl" curves in the
-        data_id dictionary.
+        """
+        Resample the "esl" and "isl" curves in the data_id dictionary.
 
         Args:
             data_id (dict): A single sample of the data to resample.
@@ -55,8 +111,8 @@ class Resample3DCurve(nn.Module):
         Returns:
             data_id (dict): The resampled data sample.
         """
-        data_id["isl"] = self.resample_curve(data_id["isl"])
-        data_id["esl"] = self.resample_curve(data_id["esl"])
+        data_id["isl"] = self._resample_curve(data_id["isl"])
+        data_id["esl"] = self._resample_curve(data_id["esl"])
         return data_id
 
 
