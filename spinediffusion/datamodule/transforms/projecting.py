@@ -138,4 +138,8 @@ class ProjectToPlane(nn.Module):
             esl_pc = self._scale_point_cloud(data_id["esl"], special_points)
             data_id["esl_depth_map"] = np.flip(self._compute_depth_map(esl_pc), axis=0)
 
+        if "isl" in data_id:
+            isl_pc = self._scale_point_cloud(data_id["isl"], special_points)
+            data_id["isl_depth_map"] = np.flip(self._compute_depth_map(isl_pc), axis=0)
+
         return data_id

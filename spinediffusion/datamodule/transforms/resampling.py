@@ -4,69 +4,17 @@ import open3d as o3d
 import torch.nn as nn
 from scipy.interpolate import splev, splprep
 
-# class Resample3DCurve(nn.Module):
-#     """Resample a 3D curve using cubic spline interpolation."""
-
-#     def __init__(self, n_points: float, **kwargs):
-#         """Initialize the Resample3DCurve class.
-
-#         Args:
-#             n_points (float): The number of points to resample the curve to.
-#         """
-#         super().__init__()
-#         self.n_points = n_points
-
-#     def _remove_duplicate_points(self, curve: npt.NDArray) -> npt.NDArray:
-#         """Remove duplicate points from a 3D curve.
-
-#         Args:
-#             curve (npt.NDArray): A 3D curve.
-
-#         Returns:
-#             npt.NDArray: The 3D curve with duplicate points removed.
-#         """
-#         curve = np.round(curve, 5)
-#         curve = np.unique(curve, axis=0)
-#         return curve
-
-#     def resample_curve(self, curve: npt.NDArray) -> npt.NDArray:
-#         """Resample a 3D curve using cubic spline interpolation.
-
-#         Args:
-#             curve (npt.NDArray): A 3D curve to resample.
-
-#         Returns:
-#             npt.NDArray: The resampled 3D curve.
-#         """
-#         curve = self._remove_duplicate_points(curve)
-
-#         distances = np.linalg.norm(np.diff(curve, axis=0), axis=1)
-#         s = 0.1 * np.mean(distances)
-
-#         tck, u = splprep(curve.T, s=s)
-#         u_new = np.linspace(0, 1, self.n_points)
-#         curve_new = splev(u_new, tck)
-#         curve_resampled = np.vstack(curve_new).T
-
-#         return curve_resampled
-
-#     def forward(self, data_id: dict) -> dict:
-#         """Resample the "esl" and "isl" curves in the
-#         data_id dictionary.
-
-#         Args:
-#             data_id (dict): A single sample of the data to resample.
-
-#         Returns:
-#             data_id (dict): The resampled data sample.
-#         """
-#         data_id["isl"] = self.resample_curve(data_id["isl"])
-#         data_id["esl"] = self.resample_curve(data_id["esl"])
-#         return data_id
-
 
 class Resample3DCurve(nn.Module):
-    def __init__(self, n_points):
+    """Resample a 3D curve using linear interpolation."""
+
+    def __init__(self, n_points: int, **kwargs):
+        """
+        Initialize the Resample3DCurve class.
+
+        Args:
+            n_points (int) : The number of points to resample the curve to.
+        """
         super().__init__()
         self.n_points = n_points
 

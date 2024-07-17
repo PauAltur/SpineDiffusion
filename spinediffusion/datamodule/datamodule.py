@@ -36,6 +36,7 @@ HASH_ARGS = {
     "transform_args",
     "num_subjects",
     "exclude_patients",
+    "conditional",
 }
 
 
@@ -68,6 +69,7 @@ class SpineDataModule(pl.LightningDataModule):
         cache_dir: str = "../../cache/",
         num_workers: int = 0,
         predict_size: int = 1,
+        conditional: bool = False,
     ):
         """Constructor for the SpineDataModule class.
 
@@ -121,6 +123,7 @@ class SpineDataModule(pl.LightningDataModule):
         self.cache_dir = Path(cache_dir)
         self.num_workers = num_workers
         self.predict_size = predict_size
+        self.conditional = conditional
         self.save_hyperparameters()
 
     def setup(self, stage: Optional[str]):
@@ -415,21 +418,33 @@ class SpineDataModule(pl.LightningDataModule):
         """
         if "project_to_plane" in self.transform_args:
             input_key = "depth_map"
+            if self.conditional:
+                isl_key = "isl_depth_map"
+                esl_key = "esl_depth_map"
         else:
             input_key = "backscan"
+            if self.conditional:
+                isl_key = "isl"
+                esl_key = "esl"
 
         inputs, esls, isls = [], [], []
 
         for key in keys:
             inputs.append(self.data[key][input_key])
-            esls.append(self.data[key]["esl"])
-            isls.append(self.data[key]["isl"])
+            if self.conditional:
+                esls.append(self.data[key][esl_key])
+                isls.append(self.data[key][isl_key])
 
-        return TensorDataset(
-            torch.tensor(np.stack(inputs)),
-            torch.tensor(np.stack(esls)),
-            torch.tensor(np.stack(isls)),
-        )
+        if self.conditional:
+            return TensorDataset(
+                torch.tensor(np.stack(inputs)),
+                torch.tensor(np.stack(esls)),
+                torch.tensor(np.stack(isls)),
+            )
+        else:
+            return TensorDataset(
+                torch.tensor(np.stack(inputs)),
+            )
 
     def train_dataloader(self):
         """Creates the training dataloader.
