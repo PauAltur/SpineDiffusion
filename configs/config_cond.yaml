@@ -18,7 +18,7 @@ trainer:
       init_args:
         every_n_epochs: 10
         num_images: 1
-        num_channels: &num_channels 1
+        num_channels: &num_channels 2
         height: &height 128
         width: &width 128
     - class_path: spinediffusion.callbacks.callbacks.GenerateCSVLog
@@ -57,7 +57,7 @@ data:
     cache_dir: P:/Projects/LMB_4Dspine/Iship_Pau_Altur_Pastor/3_database/cache
     predict_size: 100
 model:
-  class_path: spinediffusion.models.diffusion_models.UnconditionalDiffusionModel
+  class_path: spinediffusion.models.diffusion_models.ConditionalDiffusionModel
   init_args:
     model:
       class_path: diffusers.UNet2DModel
