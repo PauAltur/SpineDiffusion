@@ -70,6 +70,11 @@ class SLGenerator:
             project_args (Optional[dict]): Arguments to pass to the ProjectToPlane
                 class. Defaults to None.
         """
+        if isinstance(sl_mean, list):
+            sl_mean = np.array(sl_mean)
+        if isinstance(sl_std, list):
+            sl_std = np.array(sl_std)
+
         assert sl_mean.shape == sl_std.shape, "Mean and std must have the same shape"
 
         self.num_control_points = sl_mean.shape[0]
@@ -127,8 +132,11 @@ class SLGenerator:
             DR = DM + (DM - C7) / 2
             DL = DM - (DM - C7) / 2
             data_id["special_points"] = {"C7": C7, "DM": DM, "DR": DR, "DL": DL}
+
             depthmap = self.projector(data_id)["isl_depth_map"]
+            depthmap = np.expand_dims(depthmap, axis=0)
             return depthmap
+
         else:
             return spline
 

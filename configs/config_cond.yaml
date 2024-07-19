@@ -17,10 +17,24 @@ trainer:
     - class_path: spinediffusion.callbacks.callbacks.LogGeneratedImages
       init_args:
         every_n_epochs: 10
-        num_images: 1
-        num_channels: &num_channels 2
+        num_images: 16
+        num_channels: 1
         height: &height 128
         width: &width 128
+        sl_args: &sl_args
+          sl_mean: [[2.05, 0.52, -58.00], [2.05, 0.52, -58.00], [2.05, 0.52, -58.00], [2.05, 0.52, -58.00]]
+          sl_std: [[3.4, 0, 4.5], [14.31, 115.69 ,25.92], [14.31, 115.69 ,25.92], [3.4, 0, 4.5]]
+          length: 200
+          sample_method: "normal"
+          num_spl_points: 1024
+          project_args: &project_args
+            transform_number: 2
+            height: *height
+            width: *width
+            intensity: 1
+            spine_factor: 1
+            method: "median"
+            z_lims: [-150, 100]
     - class_path: spinediffusion.callbacks.callbacks.GenerateCSVLog
   max_epochs: 100
   log_every_n_steps: 1
@@ -37,14 +51,7 @@ data:
         transform_number: 1
         n_points: 65536
         method: uniform
-      project_to_plane:
-        transform_number: 2
-        height: *height
-        width: *width
-        intensity: 1
-        spine_factor: 1
-        method: "median"
-        z_lims: [-150, 100]
+      project_to_plane: *project_args
       close_depthmap:
         transform_number: 3
         se_size: [3, 3]
@@ -56,6 +63,8 @@ data:
     num_workers: 8
     cache_dir: P:/Projects/LMB_4Dspine/Iship_Pau_Altur_Pastor/3_database/cache
     predict_size: 100
+    conditional: true
+    sl_args: *sl_args
 model:
   class_path: spinediffusion.models.diffusion_models.ConditionalDiffusionModel
   init_args:
@@ -63,14 +72,14 @@ model:
       class_path: diffusers.UNet2DModel
       init_args:
         sample_size: *height
-        in_channels: *num_channels
-        out_channels: *num_channels
+        in_channels: 2
+        out_channels: 1
         layers_per_block: 2
         block_out_channels: [32, 32, 64, 64, 128, 128]
         down_block_types: ["DownBlock2D", "DownBlock2D", "DownBlock2D", "DownBlock2D", "AttnDownBlock2D", "DownBlock2D"]
         up_block_types: ["UpBlock2D", "UpBlock2D", "UpBlock2D", "UpBlock2D", "AttnUpBlock2D", "UpBlock2D"]
     scheduler:
-      class_path: diffusers.DDPMScheduler
+      class_path: diffusers.HeunDiscreteScheduler
     loss:
       class_path: torch.nn.MSELoss
       init_args:

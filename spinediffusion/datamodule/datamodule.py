@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from torchvision.transforms import v2
 from tqdm import tqdm
 
+from spinediffusion.datamodule.sl_generator import SLGenerator
 from spinediffusion.utils.hashing import hash_dict
 from spinediffusion.utils.misc import dumper
 
@@ -70,6 +71,7 @@ class SpineDataModule(pl.LightningDataModule):
         num_workers: int = 0,
         predict_size: int = 1,
         conditional: bool = False,
+        sl_args: Optional[dict] = None,
     ):
         """Constructor for the SpineDataModule class.
 
@@ -124,6 +126,7 @@ class SpineDataModule(pl.LightningDataModule):
         self.num_workers = num_workers
         self.predict_size = predict_size
         self.conditional = conditional
+        self.sl_args = sl_args
         self.save_hyperparameters()
 
     def setup(self, stage: Optional[str]):
@@ -357,12 +360,33 @@ class SpineDataModule(pl.LightningDataModule):
         self.train_data = self._compose_dataset(self.train_keys)
         self.val_data = self._compose_dataset(self.val_keys)
         self.test_data = self._compose_dataset(self.test_keys)
-        self.predict_data = TensorDataset(
-            torch.randn(
+
+        if self.conditional:
+            noise = torch.randn(
                 (self.predict_size, 1, *self.train_data[0][0].shape[1:]),
                 dtype=torch.float32,
             )
-        )
+            sl_generator = SLGenerator(**self.sl_args)
+            generated_sl = [
+                torch.tensor(next(sl_generator).copy(), dtype=torch.float32)
+                for _ in range(self.predict_size)
+            ]
+            predict_data = torch.stack(
+                [
+                    torch.cat([noise_, sl], dim=0)
+                    for noise_, sl in zip(noise, generated_sl)
+                ],
+                dim=0,
+            )
+            self.predict_data = TensorDataset(predict_data)
+
+        else:
+            self.predict_data = TensorDataset(
+                torch.randn(
+                    (self.predict_size, 1, *self.train_data[0][0].shape[1:]),
+                    dtype=torch.float32,
+                )
+            )
 
     def _check_split_args(self):
         """Checks the arguments for splitting the data into training, validation,
@@ -438,8 +462,8 @@ class SpineDataModule(pl.LightningDataModule):
         if self.conditional:
             return TensorDataset(
                 torch.tensor(np.stack(inputs)),
-                torch.tensor(np.stack(esls)),
-                torch.tensor(np.stack(isls)),
+                torch.tensor(np.expand_dims(np.stack(esls), 1)),
+                torch.tensor(np.expand_dims(np.stack(isls), 1)),
             )
         else:
             return TensorDataset(

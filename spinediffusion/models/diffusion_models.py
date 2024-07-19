@@ -195,7 +195,7 @@ class ConditionalDiffusionModel(pl.LightningModule):
         Returns:
             loss (torch.Tensor): The loss value.
         """
-        x, prior = batch
+        x, _, prior = batch
 
         noise = torch.randn(x.shape, dtype=torch.float32, device=self.device)
         timesteps = torch.randint(
@@ -284,7 +284,7 @@ class ConditionalDiffusionModel(pl.LightningModule):
         Returns:
             loss (torch.Tensor): The loss value.
         """
-        x, prior = batch
+        x, _, prior = batch
 
         if timesteps is None:
             if hasattr(self.scheduler, "set_timesteps"):
