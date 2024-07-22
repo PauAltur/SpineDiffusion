@@ -21,6 +21,7 @@ trainer:
         num_channels: &num_channels 1
         height: &height 128
         width: &width 128
+        batch_size: &batch_size 10
     - class_path: spinediffusion.callbacks.callbacks.GenerateCSVLog
   max_epochs: 100
   log_every_n_steps: 1
@@ -28,7 +29,7 @@ data:
   class_path: spinediffusion.datamodule.datamodule.SpineDataModule
   init_args:
     data_dir: P:/Projects/LMB_4Dspine/back_scan_database
-    batch_size: 10
+    batch_size: *batch_size
     transform_args:
       resample_3d_curve:
         transform_number: 0

@@ -360,33 +360,7 @@ class SpineDataModule(pl.LightningDataModule):
         self.train_data = self._compose_dataset(self.train_keys)
         self.val_data = self._compose_dataset(self.val_keys)
         self.test_data = self._compose_dataset(self.test_keys)
-
-        if self.conditional:
-            noise = torch.randn(
-                (self.predict_size, 1, *self.train_data[0][0].shape[1:]),
-                dtype=torch.float32,
-            )
-            sl_generator = SLGenerator(**self.sl_args)
-            generated_sl = [
-                torch.tensor(next(sl_generator).copy(), dtype=torch.float32)
-                for _ in range(self.predict_size)
-            ]
-            predict_data = torch.stack(
-                [
-                    torch.cat([noise_, sl], dim=0)
-                    for noise_, sl in zip(noise, generated_sl)
-                ],
-                dim=0,
-            )
-            self.predict_data = TensorDataset(predict_data)
-
-        else:
-            self.predict_data = TensorDataset(
-                torch.randn(
-                    (self.predict_size, 1, *self.train_data[0][0].shape[1:]),
-                    dtype=torch.float32,
-                )
-            )
+        self.predict_data = self._compose_predict_dataset()
 
     def _check_split_args(self):
         """Checks the arguments for splitting the data into training, validation,
@@ -470,6 +444,45 @@ class SpineDataModule(pl.LightningDataModule):
                 torch.tensor(np.stack(inputs)),
             )
 
+    def _compose_predict_dataset(self):
+        """Composes the predict dataset.
+
+        Returns:
+            predict_data (torch.utils.data.TensorDataset) : The predict
+            dataset.
+        """
+        if self.conditional:
+            noise = torch.randn(
+                self.predict_size,
+                *self.train_data[0][0].shape[1:],
+                dtype=torch.float32,
+            )
+
+            sl_generator = SLGenerator(**self.sl_args)
+            generated_sl = torch.concatenate(
+                [
+                    torch.tensor(
+                        next(sl_generator).copy(),
+                        dtype=torch.float32,
+                    ).unsqueeze(0)
+                    for _ in range(self.predict_size)
+                ]
+            )
+
+            predict_dataset = TensorDataset(
+                noise, torch.zeros(noise.size()), generated_sl
+            )
+
+        else:
+            predict_dataset = TensorDataset(
+                torch.randn(
+                    (self.predict_size, 1, *self.train_data[0][0].shape[1:]),
+                    dtype=torch.float32,
+                )
+            )
+
+        return predict_dataset
+
     def train_dataloader(self):
         """Creates the training dataloader.
 
@@ -492,7 +505,7 @@ class SpineDataModule(pl.LightningDataModule):
         """
         return DataLoader(
             self.val_data,
-            batch_size=len(self.val_data),
+            batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.num_workers,
             persistent_workers=True,
@@ -506,7 +519,7 @@ class SpineDataModule(pl.LightningDataModule):
         """
         return DataLoader(
             self.test_data,
-            batch_size=len(self.test_data),
+            batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.num_workers,
             persistent_workers=True,
@@ -520,7 +533,7 @@ class SpineDataModule(pl.LightningDataModule):
         """
         return DataLoader(
             self.predict_data,
-            batch_size=self.predict_size,
+            batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.num_workers,
             persistent_workers=True,

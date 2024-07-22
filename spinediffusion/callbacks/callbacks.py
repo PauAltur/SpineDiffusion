@@ -21,6 +21,7 @@ class LogGeneratedImages(Callback):
         height: int = 128,
         width: int = 128,
         sl_args: Optional[dict] = None,
+        batch_size: int = 10,
     ):
         """Initializes the LogGeneratedImages callback.
 
@@ -33,6 +34,7 @@ class LogGeneratedImages(Callback):
             width (int, optional): The width of the images. Defaults to 128.
             sl_args (Optional[dict], optional): The arguments for the SLGenerator.
                 Defaults to None.
+            batch_size (int, optional): The batch size for the generated images.
         """
         self.every_n_epochs = every_n_epochs
         self.num_images = num_images
@@ -40,6 +42,7 @@ class LogGeneratedImages(Callback):
         self.height = height
         self.width = width
         self.sl_args = sl_args
+        self.batch_size = batch_size
 
     def on_train_epoch_end(self, trainer, pl_module):
         """Generates images at the end of each training epoch.
@@ -57,7 +60,7 @@ class LogGeneratedImages(Callback):
             predict_batch = self._unconditional_input_generation(pl_module.device)
 
         predict_dataloader = DataLoader(
-            predict_batch, batch_size=len(predict_batch), shuffle=False
+            predict_batch, batch_size=self.batch_size, shuffle=False
         )
 
         for batch in predict_dataloader:
@@ -119,6 +122,7 @@ class LogGeneratedImages(Callback):
         predict_batch = TensorDataset(
             noise, torch.zeros(noise.size(), device=device), generated_sl
         )
+
         return predict_batch
 
 
