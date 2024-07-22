@@ -5,7 +5,7 @@ import pandas as pd
 import torch
 from pytorch_lightning.callbacks.callback import Callback
 from tensorflow.python.summary.summary_iterator import summary_iterator
-from torch.utils.data import TensorDataset
+from torch.utils.data import DataLoader, TensorDataset
 
 from spinediffusion.datamodule.sl_generator import SLGenerator
 
@@ -22,7 +22,7 @@ class LogGeneratedImages(Callback):
         width: int = 128,
         sl_args: Optional[dict] = None,
     ):
-        """Initializes the GenerateImages callback.
+        """Initializes the LogGeneratedImages callback.
 
         Args:
             every_n_epochs (int, optional): The number of epochs between image generations.
@@ -50,38 +50,76 @@ class LogGeneratedImages(Callback):
         """
         if trainer.current_epoch % self.every_n_epochs != 0:
             return
-        noise = [
-            torch.randn(
-                self.num_images,
-                self.num_channels,
-                self.height,
-                self.width,
-                device=pl_module.device,
-            )
-        ]
 
         if self.sl_args:
-            sl_generator = SLGenerator(**self.sl_args)
-            generated_sl = [
+            predict_batch = self._conditional_input_generation(pl_module.device)
+        else:
+            predict_batch = self._unconditional_input_generation(pl_module.device)
+
+        predict_dataloader = DataLoader(
+            predict_batch, batch_size=len(predict_batch), shuffle=False
+        )
+
+        for batch in predict_dataloader:
+            generated = pl_module.predict_step(batch, 1)
+            trainer.logger.experiment.add_image(
+                "train/generated/",
+                generated,
+                global_step=trainer.global_step,
+                dataformats="NCHW",
+            )
+
+    def _unconditional_input_generation(self, device):
+        """Generates unconditional input for the generator.
+
+        Args:
+            device (torch.device): The device to use for the input.
+
+        Returns:
+            torch.Tensor: The generated input.
+        """
+        predict_batch = torch.randn(
+            self.num_images,
+            self.num_channels,
+            self.height,
+            self.width,
+            device=device,
+        )
+        return predict_batch
+
+    def _conditional_input_generation(self, device):
+        """Generates conditional input for the generator.
+
+        Args:
+            device (torch.device): The device to use for the input.
+
+        Returns:
+            torch.Tensor: The generated input.
+        """
+        noise = torch.randn(
+            self.num_images,
+            self.num_channels,
+            self.height,
+            self.width,
+            device=device,
+        )
+
+        sl_generator = SLGenerator(**self.sl_args)
+        generated_sl = torch.concatenate(
+            [
                 torch.tensor(
                     next(sl_generator).copy(),
                     dtype=torch.float32,
-                    device=pl_module.device,
+                    device=device,
                 ).unsqueeze(0)
                 for _ in range(self.num_images)
             ]
-            predict_batch = [noise, None, generated_sl]
-            predict_batch = TensorDataset(predict_batch)
-        else:
-            predict_batch = noise
-
-        generated = pl_module.predict_step(predict_batch, 1)
-        trainer.logger.experiment.add_image(
-            "train/generated/",
-            generated,
-            global_step=trainer.global_step,
-            dataformats="NCHW",
         )
+
+        predict_batch = TensorDataset(
+            noise, torch.zeros(noise.size(), device=device), generated_sl
+        )
+        return predict_batch
 
 
 class GenerateCSVLog(Callback):
