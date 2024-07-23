@@ -52,7 +52,7 @@ data:
       tensorize:
         transform_number: 4
     augment_args:
-      random_augmentation:
+      random_rotation:
         transform_number: 0
         theta_range: [0, 0.4]
         num_aug: 10
