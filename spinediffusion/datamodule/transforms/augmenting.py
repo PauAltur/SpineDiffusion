@@ -67,15 +67,13 @@ class RandomRotationAugmentation(nn.Module):
             if "isl" in data_id:
                 data_id_aug[f"{key}_{i}"]["isl"] = (R @ data_id["isl"].T).T
             if "special_points" in data_id:
-                data_id_aug[f"{key}_{i}"]["special_points"] = (
-                    R @ data_id["special_points"].T
-                ).T
-                for key, point in data_id["special_points"].items():
+                data_id_aug[f"{key}_{i}"]["special_points"] = {}
+                for point_key, point in data_id["special_points"].items():
                     # check whether point is empty
                     if len(point) == 0:
-                        data_id_aug[f"{key}_{i}"]["special_points"][key] = point
+                        data_id_aug[f"{key}_{i}"]["special_points"][point_key] = point
                     else:
-                        data_id_aug[f"{key}_{i}"]["special_points"][key] = (
+                        data_id_aug[f"{key}_{i}"]["special_points"][point_key] = (
                             R @ point.T
                         ).T
         return data_id_aug
