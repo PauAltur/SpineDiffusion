@@ -54,7 +54,7 @@ data:
     augment_args:
       random_augmentation:
         transform_number: 0
-        theta_range: [0, 0.1]
+        theta_range: [0, 0.4]
         num_aug: 10
     train_fraction: 0.8
     val_fraction: 0.1
