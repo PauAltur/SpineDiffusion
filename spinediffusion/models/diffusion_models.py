@@ -137,7 +137,7 @@ class UnconditionalDiffusionModel(pl.LightningModule):
         Returns:
             loss (torch.Tensor): The loss value.
         """
-        x = batch[0].to(self.device)
+        x = batch.to(self.device)
 
         if timesteps is None:
             if hasattr(self.scheduler, "set_timesteps"):

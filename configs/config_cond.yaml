@@ -64,7 +64,6 @@ data:
     num_workers: 8
     cache_dir: P:/Projects/LMB_4Dspine/Iship_Pau_Altur_Pastor/3_database/cache
     predict_size: 100
-    conditional: true
     sl_args: *sl_args
 model:
   class_path: spinediffusion.models.diffusion_models.ConditionalDiffusionModel
