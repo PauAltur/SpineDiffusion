@@ -16,6 +16,7 @@ from spinediffusion.datamodule.sl_generator import SLGenerator
 from spinediffusion.utils.hashing import hash_dict
 from spinediffusion.utils.misc import dumper
 
+from .transforms.augmenting import RandomRotationAugmentation
 from .transforms.closing import Closing
 from .transforms.normalizing import ConstantNormalization, SpineLengthNormalization
 from .transforms.projecting import ProjectToPlane
@@ -30,14 +31,17 @@ TRANSFORMS = {
     "resample_point_cloud": ResamplePointCloud,
     "close_depthmap": Closing,
     "tensorize": Tensorize,
+    "random_rotation": RandomRotationAugmentation,
 }
 
 HASH_ARGS = {
     "data_dir",
     "transform_args",
+    "augment_args",
     "num_subjects",
     "exclude_patients",
     "conditional",
+    "sl_args",
 }
 
 
@@ -58,6 +62,7 @@ class SpineDataModule(pl.LightningDataModule):
         data_dir: str,
         batch_size: int,
         transform_args: dict,
+        augment_args: Optional[dict] = None,
         train_fraction: Optional[float] = None,
         val_fraction: Optional[float] = None,
         test_fraction: Optional[float] = None,
@@ -82,6 +87,8 @@ class SpineDataModule(pl.LightningDataModule):
                 data preprocessing transforms. For more information on the
                 available transforms, please refer to the README.md in the
                 transforms subdirectory.
+            augment_args (Optional[dict], optional): A dictionary containing the
+                arguments for the data augmentation transforms. Defaults to None.
             train_fraction (Optional[float], optional): The fraction of the dataset
                 to use as a training set. Defaults to None.
             val_fraction (Optional[float], optional):  The fraction of the dataset
@@ -105,6 +112,14 @@ class SpineDataModule(pl.LightningDataModule):
                 to True.
             cache_dir (str, optional): The directory to save the cache. Defaults to
             "../../cache/".
+            num_workers (int, optional): The number of workers to use for the dataloaders.
+                Defaults to 0.
+            predict_size (int, optional): The number of samples to generate for the
+                predict dataloader. Defaults to 1.
+            conditional (bool, optional): Whether the model is conditional and thus requires
+                the ISL as input prior. Defaults to False.
+            sl_args (Optional[dict], optional): The arguments for the SLGenerator class. Only
+                needed if conditional is True. Defaults to None.
         """
         super().__init__()
         self.data_dir = Path(data_dir)
@@ -116,6 +131,7 @@ class SpineDataModule(pl.LightningDataModule):
         self.val_keys = val_keys
         self.test_keys = test_keys
         self.transform_args = transform_args
+        self.augment_args = augment_args
         self.meta = {}
         self.backs = {}
         self.data = {}
@@ -148,6 +164,7 @@ class SpineDataModule(pl.LightningDataModule):
             self._exclude_patients()
             self._load_data()
             self._reformat_data()
+            self._augment_data()
             self._preprocess_data()
             self._save_cache()
 
@@ -301,6 +318,30 @@ class SpineDataModule(pl.LightningDataModule):
             self.data[unique_id]["isl"] = np.asarray(
                 self.meta[unique_id]["isl"][pc_type]
             )
+
+    def _augment_data(self):
+        """Augments the data using the augment_args dictionary."""
+        if self.augment_args is None:
+            return
+
+        print("Augmenting data...")
+        augmentations = []
+        for i in range(len(self.augment_args)):
+            for key, value in self.augment_args.items():
+                if value["transform_number"] == i:
+                    augmentations.append(TRANSFORMS[key](**value))
+                    print(f"{key}")
+                    print("---------------------------")
+                    for k, v in value.items():
+                        print(f"{k}: {v}")
+                    print("\n")
+
+        self.augmentations = v2.Compose(augmentations)
+        augmented_data = {}
+        for unique_id in tqdm(self.data.keys()):
+            augmented_data.update(self.augmentations(self.data[unique_id], unique_id))
+
+        self.data.update(augmented_data)
 
     def _preprocess_data(self):
         """Preprocesses the data using the transforms provided
