@@ -494,7 +494,7 @@ class SpineDataModule(pl.LightningDataModule):
         if self.sl_args is not None:
             noise = torch.randn(
                 self.predict_size,
-                *self.train_data[0][0].shape[1:],
+                *self.train_data[0][0].shape,
                 dtype=torch.float32,
             )
 
