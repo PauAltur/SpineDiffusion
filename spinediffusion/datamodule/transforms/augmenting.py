@@ -4,6 +4,7 @@ import torch.nn as nn
 
 
 class RandomRotationAugmentation(nn.Module):
+    """Randomly rotates the data by a random angle within a user-defined range."""
 
     def __init__(self, theta_range: (list, tuple), num_aug: int, **kwargs):
         """Initializes the RandomRotationAugmentation class.
@@ -18,14 +19,13 @@ class RandomRotationAugmentation(nn.Module):
         self.theta_range = theta_range
         self.num_aug = num_aug
 
-    def forward(self, data_id: dict, key: str) -> dict:
+    def forward(self, data_id: dict) -> dict:
         """Rotates the data by a random angle within the user-defined range.
 
         Args:
             data_id (dict): A single sample of the data to augment.
                 Must have the key 'backscan' and optionally 'esl' and 'isl'
                 which store geometric data corresponding to point clouds (or lines).
-            key (str): The key of the sample.
 
         Returns:
             data_id (dict): The augmented data sample.

@@ -40,7 +40,6 @@ HASH_ARGS = {
     "augment_args",
     "num_subjects",
     "exclude_patients",
-    "conditional",
     "sl_args",
 }
 
@@ -75,7 +74,6 @@ class SpineDataModule(pl.LightningDataModule):
         cache_dir: str = "../../cache/",
         num_workers: int = 0,
         predict_size: int = 1,
-        conditional: bool = False,
         sl_args: Optional[dict] = None,
     ):
         """Constructor for the SpineDataModule class.
@@ -116,10 +114,11 @@ class SpineDataModule(pl.LightningDataModule):
                 Defaults to 0.
             predict_size (int, optional): The number of samples to generate for the
                 predict dataloader. Defaults to 1.
-            conditional (bool, optional): Whether the model is conditional and thus requires
-                the ISL as input prior. Defaults to False.
-            sl_args (Optional[dict], optional): The arguments for the SLGenerator class. Only
-                needed if conditional is True. Defaults to None.
+            sl_args (Optional[dict], optional): The arguments for the SLGenerator class. It also
+            acts as the control variable on whether the dataset is conditional (i.e. inputs
+            to the UNet model are composed of noise and a prior, which in our case is the ISL
+            line, but it could also be a segmentation mask or any other informations).
+            Defaults to None.
         """
         super().__init__()
         self.data_dir = Path(data_dir)
@@ -141,7 +140,6 @@ class SpineDataModule(pl.LightningDataModule):
         self.cache_dir = Path(cache_dir)
         self.num_workers = num_workers
         self.predict_size = predict_size
-        self.conditional = conditional
         self.sl_args = sl_args
         self.save_hyperparameters()
 
@@ -231,14 +229,13 @@ class SpineDataModule(pl.LightningDataModule):
         """Loads both backscan point clouds and metadata from the data directories
         found in _parse_datapaths().
         """
-        print("Loading data...")
-
         # auxiliary selection for quick testing and debugging
         self._select_n_subj_per_dataset()
 
         for back_path, meta_path in tqdm(
-            zip(self.dirs_back, self.dirs_meta),  # noqa: B905
+            zip(self.dirs_back, self.dirs_meta),
             total=len(self.dirs_back),
+            desc="Loading data",
         ):
             msg = (
                 f"Backscan and metadata files do not match: {back_path} and {meta_path}"
@@ -286,8 +283,7 @@ class SpineDataModule(pl.LightningDataModule):
         All samples are stored in self.data as a dictionary with the
         unique_id as the key.
         """
-        print("Reformatting data...")
-        for unique_id in tqdm(self.meta.keys()):
+        for unique_id in tqdm(self.meta.keys(), desc="Reformatting data"):
             self.data[unique_id] = {}
             self.data[unique_id]["backscan"] = self.backs[unique_id]
             self.data[unique_id]["dataset"] = self.meta[unique_id]["dataset"]
@@ -324,8 +320,8 @@ class SpineDataModule(pl.LightningDataModule):
         if self.augment_args is None:
             return
 
-        print("Augmenting data...")
         augmentations = []
+
         for i in range(len(self.augment_args)):
             for key, value in self.augment_args.items():
                 if value["transform_number"] == i:
@@ -336,12 +332,16 @@ class SpineDataModule(pl.LightningDataModule):
                         print(f"{k}: {v}")
                     print("\n")
 
-        self.augmentations = v2.Compose(augmentations)
-        augmented_data = {}
-        for unique_id in tqdm(self.data.keys()):
-            augmented_data.update(self.augmentations(self.data[unique_id], unique_id))
+        data_aug = {}
+        for unique_id, data_id in tqdm(self.data.items(), desc="Augmenting data"):
+            aug_count = 0
+            for augmentation in augmentations:
+                for _ in range(augmentation.num_aug):
+                    aug_id = f"{unique_id}_{aug_count}"
+                    data_aug[aug_id] = augmentation(data_id)
+                    aug_count += 1
 
-        self.data.update(augmented_data)
+        self.data.update(data_aug)
 
     def _preprocess_data(self):
         """Preprocesses the data using the transforms provided
@@ -351,7 +351,6 @@ class SpineDataModule(pl.LightningDataModule):
         key in the transform_args dictionary. The transforms are then composed
         into a single transform using torchvision.transforms.Compose.
         """
-        print("Preprocessing data...")
         transforms = []
         for i in range(len(self.transform_args)):
             for key, value in self.transform_args.items():
@@ -364,7 +363,7 @@ class SpineDataModule(pl.LightningDataModule):
                     print("\n")
 
         self.transforms = v2.Compose(transforms)
-        for unique_id in tqdm(self.data.keys()):
+        for unique_id in tqdm(self.data.keys(), desc="Preprocessing data"):
             self.data[unique_id] = self.transforms(self.data[unique_id])
 
     def _save_cache(self):
@@ -457,12 +456,12 @@ class SpineDataModule(pl.LightningDataModule):
         """
         if "project_to_plane" in self.transform_args:
             input_key = "depth_map"
-            if self.conditional:
+            if self.sl_args is not None:
                 isl_key = "isl_depth_map"
                 esl_key = "esl_depth_map"
         else:
             input_key = "backscan"
-            if self.conditional:
+            if self.sl_args is not None:
                 isl_key = "isl"
                 esl_key = "esl"
 
@@ -470,11 +469,11 @@ class SpineDataModule(pl.LightningDataModule):
 
         for key in keys:
             inputs.append(self.data[key][input_key])
-            if self.conditional:
+            if self.sl_args is not None:
                 esls.append(self.data[key][esl_key])
                 isls.append(self.data[key][isl_key])
 
-        if self.conditional:
+        if self.sl_args is not None:
             return TensorDataset(
                 torch.tensor(np.stack(inputs)),
                 torch.tensor(np.expand_dims(np.stack(esls), 1)),
@@ -492,7 +491,7 @@ class SpineDataModule(pl.LightningDataModule):
             predict_data (torch.utils.data.TensorDataset) : The predict
             dataset.
         """
-        if self.conditional:
+        if self.sl_args is not None:
             noise = torch.randn(
                 self.predict_size,
                 *self.train_data[0][0].shape[1:],
