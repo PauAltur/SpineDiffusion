@@ -11,6 +11,7 @@
 
 # cache data
 **/cache/
+**/.cache/
 *.pt
 
 # package files
