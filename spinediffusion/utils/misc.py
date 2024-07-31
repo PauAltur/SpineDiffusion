@@ -45,11 +45,10 @@ def find_test_param(config_dict: dict, test_param: str) -> str:
     return None
 
 
-def instantiate_model_from_logs(df_run, config, ckpt_path):
+def instantiate_model_from_logs(config, ckpt_path):
     """Instantiate a model from the logs.
 
     Args:
-        df_run (pd.DataFrame): The dataframe of the run logs.
         config (dict): The configuration dictionary.
         ckpt_path (str): The path to the checkpoint.
 
@@ -78,3 +77,36 @@ def instantiate_model_from_logs(df_run, config, ckpt_path):
     )
 
     return lightning_model
+
+
+def instantiate_datamodule_from_logs(
+    config,
+    system,
+    data_dir="P:/Projects/LMB_4Dspine/back_scan_database",
+    cache_dir="P:/Projects/LMB_4Dspine/Iship_Pau_Altur_Pastor/3_database/cache",
+    num_subjects=None,
+    predict_size=None,
+):
+    """Instantiate a datamodule from the config file.
+
+    Args:
+        config (dict): The configuration dictionary.
+        system (str): The operating system on which the code is running.
+    """
+    if system == "Windows":
+        config["data"]["init_args"]["data_dir"] = data_dir
+    elif system == "Linux":
+        config["data"]["init_args"]["cache_dir"] = cache_dir
+
+    if "conditional" in config["data"]["init_args"]:
+        config["data"]["init_args"].pop("conditional")
+
+    if num_subjects is not None:
+        config["data"]["init_args"]["num_subjects"] = num_subjects
+
+    if predict_size is not None:
+        config["data"]["init_args"]["predict_size"] = predict_size
+
+    datamodule = eval(config["data"]["class_path"])(**config["data"]["init_args"])
+
+    return datamodule
