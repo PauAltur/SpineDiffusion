@@ -25,7 +25,13 @@ class ProjectToPlane(nn.Module):
         Args:
             height (int): The height of the depth map.
             width (int): The width of the depth map.
+            spine_factor (float): The factor to scale the point cloud along the spine.
             intensity (float): The maximum intensity value to use for the depth map.
+            method (str): The method to use for aggregating the z values of the points
+                that fall into the same pixel. Should be either 'mean' or 'median'.
+            z_lims (list, optional): The minimum and maximum z values to use for scaling
+                the z values of the point cloud. If None, the minimum and maximum z values
+                of the point cloud will be used. Defaults to None.
         """
         super().__init__()
         self.height = height
