@@ -39,7 +39,7 @@ trainer:
     - class_path: spinediffusion.callbacks.callbacks.GenerateCSVLog
     - class_path: spinediffusion.callbacks.callbacks.CustomImageWriter
       init_args:
-        output_dir: results
+        output_dir: results_aug
         write_interval: "epoch"
   max_epochs: 100
   log_every_n_steps: 1
