@@ -23,6 +23,10 @@ trainer:
         width: &width 128
         batch_size: &batch_size 10
     - class_path: spinediffusion.callbacks.callbacks.GenerateCSVLog
+    - class_path: spinediffusion.callbacks.callbacks.CustomImageWriter
+      init_args:
+        output_dir: results
+        write_interval: "epoch"
   max_epochs: 100
   log_every_n_steps: 1
 data:
@@ -56,7 +60,7 @@ data:
     test_fraction: 0.1
     num_workers: 8
     cache_dir: P:/Projects/LMB_4Dspine/Iship_Pau_Altur_Pastor/3_database/cache
-    predict_size: 100
+    predict_size: 1
 model:
   class_path: spinediffusion.models.diffusion_models.UnconditionalDiffusionModel
   init_args:

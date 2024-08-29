@@ -13,7 +13,6 @@ class RandomRotationAugmentation(nn.Module):
             theta_range ((list, tuple)): The range of angles to rotate the data by.
                 The range is defined as [theta_min, theta_max] and should be provided
                 in radians.
-            num_aug (int): The number of augmented samples to generate.
         """
         super().__init__()
         self.theta_range = theta_range

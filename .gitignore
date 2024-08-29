@@ -25,3 +25,6 @@
 
 # windows scripts
 **/*.bat
+
+# results
+**/results/

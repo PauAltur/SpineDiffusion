@@ -23,6 +23,10 @@ trainer:
         width: &width 128
         batch_size: &batch_size 10
     - class_path: spinediffusion.callbacks.callbacks.GenerateCSVLog
+    - class_path: spinediffusion.callbacks.callbacks.CustomWriter
+      init_args:
+        output_dir: results
+        write_interval: "epoch"
   max_epochs: 100
   log_every_n_steps: 1
 data:
@@ -55,7 +59,6 @@ data:
       random_rotation:
         transform_number: 0
         theta_range: [0, 0.4]
-        num_aug: 5
     train_fraction: 0.8
     val_fraction: 0.1
     test_fraction: 0.1
