@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from torchvision.transforms import v2
 from tqdm import tqdm
 
-from spinediffusion.datamodule.sl_generator import SLGenerator
+from spinediffusion.data.sl_generator import SLGenerator
 from spinediffusion.utils.hashing import hash_dict
 from spinediffusion.utils.misc import dumper
 
