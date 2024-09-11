@@ -10,8 +10,8 @@ import torch
 class SpineSample:
     """Dataclass for storing spine data samples."""
 
-    backscan: o3d.geometry.PointCloud
-    special_points: List[npt.NDArray]
+    backscan: Optional[o3d.geometry.PointCloud] = None
+    special_points: Optional[List[npt.NDArray]] = None
     backscan_proj: Optional[npt.NDArray] = None
     esl: Optional[npt.NDArray] = None
     esl_proj: Optional[npt.NDArray] = None

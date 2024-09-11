@@ -6,7 +6,7 @@ import open3d as o3d
 from scipy.interpolate import splev, splprep
 from scipy.stats import norm, uniform
 
-from spinediffusion.data.transforms.projecting import ProjectToPlane
+from spinediffusion.data.transforms import ProjectToPlane
 
 GENERATOR_METHODS = {
     "normal": norm,

@@ -31,3 +31,14 @@ def hash_dict(d: dict) -> str:
     """
     dict_str = dict_to_str(d)
     return hashlib.sha256(dict_str.encode()).hexdigest()
+
+
+def hash_dict_keys(d: dict) -> str:
+    """
+    Hashes the keys of a dictionary.
+
+    Args:
+        d (dict): The dictionary to hash.
+    """
+    keys_str = str(list(d.keys()))
+    return hashlib.sha256(keys_str.encode()).hexdigest()

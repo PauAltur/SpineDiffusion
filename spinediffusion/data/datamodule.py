@@ -15,15 +15,18 @@ from tqdm import tqdm
 
 from spinediffusion.data.dataclass import SpineSample
 from spinediffusion.data.sl_generator import SLGenerator
-from spinediffusion.utils.hashing import hash_dict
+from spinediffusion.data.transforms import (
+    Closing,
+    ConstantNormalization,
+    ProjectToPlane,
+    RandomRotationAugmentation,
+    Resample3DCurve,
+    ResamplePointCloud,
+    SpineLengthNormalization,
+    Tensorize,
+)
+from spinediffusion.utils.hashing import hash_dict, hash_dict_keys
 from spinediffusion.utils.misc import dumper
-
-from .transforms.augmenting import RandomRotationAugmentation
-from .transforms.closing import Closing
-from .transforms.normalizing import ConstantNormalization, SpineLengthNormalization
-from .transforms.projecting import ProjectToPlane
-from .transforms.resampling import Resample3DCurve, ResamplePointCloud
-from .transforms.tensoring import Tensorize
 
 TRANSFORMS = {
     "constant_normalize": ConstantNormalization,
@@ -75,6 +78,7 @@ class SpineDataModule(pl.LightningDataModule):
         exclude_patients: Optional[dict] = None,
         use_cache: bool = True,
         cache_dir: str = "../../cache/",
+        cache_size: int = np.inf,
         num_workers: int = 0,
         predict_size: int = 1,
         sl_args: Optional[dict] = None,
@@ -113,6 +117,8 @@ class SpineDataModule(pl.LightningDataModule):
                 to True.
             cache_dir (str, optional): The directory to save the cache. Defaults to
             "../../cache/".
+            cache_size (int, optional): The number of samples to save per cache file. This
+                is useful for large datasets that do not fit in memory. Defaults to np.inf.
             num_workers (int, optional): The number of workers to use for the dataloaders.
                 Defaults to 0.
             predict_size (int, optional): The number of samples to generate for the
@@ -141,6 +147,7 @@ class SpineDataModule(pl.LightningDataModule):
         self.exclude_patients = exclude_patients
         self.use_cache = use_cache
         self.cache_dir = Path(cache_dir)
+        self.cache_size = cache_size
         self.num_workers = num_workers
         self.predict_size = predict_size
         self.sl_args = sl_args
@@ -164,8 +171,8 @@ class SpineDataModule(pl.LightningDataModule):
                 print("Reprocessing data since use_cache attribute is set to False.")
 
             data = self._load_data()
-
-        return data
+            self._augment_data(data, cache_folder)
+            self._preprocess_data(cache_folder)
 
     def setup(self, stage: Optional[str]):
         """Setup method for the SpineDataModule class. This method is called
@@ -191,11 +198,6 @@ class SpineDataModule(pl.LightningDataModule):
             self._save_cache()
 
         self._split_data()
-
-    def _load_cache(self):
-        """Loads the cache from the cache file."""
-        print(f"Loading cache from {self.cache_file}...")
-        self.data = torch.load(self.cache_file)
 
     def _load_data(self) -> Dict:
         """Loads both backscan point clouds and metadata from the data directories
@@ -248,60 +250,15 @@ class SpineDataModule(pl.LightningDataModule):
 
         return data
 
-    def _reformat_data(self):
-        """Reformats the data into a more convenient structure for
-        the rest of the pipeline.
+    def _augment_data(self, data, cache_folder):
+        """Augments the data using the augment_args dictionary.
 
-        Each sample is stored as a dictionary with the following keys:
-        - backscan: the backscan point cloud
-        - dataset: the dataset the sample belongs to
-        - id: the unique identifier of the sample
-        - age: the age of the patient
-        - gender: the gender of the patient
-        - status: the status of the patient
-        - pipeline_steps: the pipeline steps applied to the backscan
-        - special_points: the special points of the backscan
-        - esl: the external spinal line
-        - isl: the internal spinal line
-
-        All samples are stored in self.data as a dictionary with the
-        unique_id as the key.
+        Args:
+            data (dict): The data to augment.
+            cache_folder (Path): The folder to save the augmented data.
         """
-        for unique_id in tqdm(self.meta.keys(), desc="Reformatting data"):
-            self.data[unique_id] = {}
-            self.data[unique_id]["backscan"] = self.backs[unique_id]
-            self.data[unique_id]["dataset"] = self.meta[unique_id]["dataset"]
-            self.data[unique_id]["id"] = self.meta[unique_id]["id"]
-            self.data[unique_id]["age"] = self.meta[unique_id]["age"]
-            self.data[unique_id]["gender"] = self.meta[unique_id]["gender"]
-            self.data[unique_id]["status"] = self.meta[unique_id]["status"]
-
-            # change from camelCase to snake_case for python conventions
-            self.data[unique_id]["pipeline_steps"] = self.meta[unique_id][
-                "pipelineSteps"
-            ].copy()
-            self.data[unique_id]["special_points"] = self.meta[unique_id][
-                "specialPts"
-            ].copy()
-
-            for point_id, point in self.data[unique_id]["special_points"].items():
-                self.data[unique_id]["special_points"][point_id] = np.asarray(point)
-
-            if self.data[unique_id]["dataset"] == "croatian":
-                pc_type = "formetric"
-            else:
-                pc_type = "pcdicomapp"
-
-            self.data[unique_id]["esl"] = np.asarray(
-                self.meta[unique_id]["esl"][pc_type]
-            )
-            self.data[unique_id]["isl"] = np.asarray(
-                self.meta[unique_id]["isl"][pc_type]
-            )
-
-    def _augment_data(self):
-        """Augments the data using the augment_args dictionary."""
         if self.augment_args is None:
+            self._save_minibatch(data, cache_folder)
             return
 
         augmentations = []
@@ -317,17 +274,42 @@ class SpineDataModule(pl.LightningDataModule):
                     print("\n")
 
         data_aug = {}
-        for unique_id, data_id in tqdm(self.data.items(), desc="Augmenting data"):
-            aug_count = 0
+        aug_count_global = 0
+        for unique_id, data_id in tqdm(data.items(), desc="Augmenting data"):
+            aug_count_id = 0
             for augmentation in augmentations:
                 for _ in range(augmentation.num_aug):
-                    aug_id = f"{unique_id}_{aug_count}"
+                    aug_id = f"{unique_id}_{aug_count_id}"
                     data_aug[aug_id] = augmentation(data_id)
-                    aug_count += 1
+                    # change to make data_aug serializable
+                    data_aug[aug_id].backscan = np.asarray(
+                        data_aug[aug_id].backscan.points
+                    )
+                    aug_count_id += 1
+                    aug_count_global += 1
 
-        self.data.update(data_aug)
+                    if aug_count_global >= self.cache_size:
+                        self._save_minibatch(data_aug, cache_folder)
+                        data_aug = {}
+                        aug_count_global = 0
 
-    def _preprocess_data(self):
+        if len(data_aug) > 0:
+            self._save_minibatch(data_aug, cache_folder)
+
+    def _save_minibatch(self, minibatch, cache_folder):
+        """Saves a minibatch of data to a cache file. The cache file is saved
+        in the cache directory with the name being the hash of the minibatch.
+
+        Args:
+            minibatch (dict): The minibatch of data to save.
+        """
+        cache_hash = hash_dict_keys(minibatch)
+        cache_folder.mkdir(parents=True, exist_ok=True)
+        cache_file = cache_folder / f"{cache_hash}.pt"
+        print(f"Saving minibatch to {cache_file}...")
+        torch.save(minibatch, cache_file)
+
+    def _preprocess_data(self, cache_folder):
         """Preprocesses the data using the transforms provided
         in the transform_args dictionary.
 
@@ -347,29 +329,19 @@ class SpineDataModule(pl.LightningDataModule):
                     print("\n")
 
         self.transforms = v2.Compose(transforms)
-        for unique_id in tqdm(self.data.keys(), desc="Preprocessing data"):
-            self.data[unique_id] = self.transforms(self.data[unique_id])
 
-    def _save_cache(self):
-        """Saves the data to a cache file for future use. The cache file
-        is saved in the cache directory with the name being the hash of
-        the cache_dict.
+        minibatches = glob.glob(str(cache_folder / "*.pt"))
 
-        The cache_dict is a dictionary containing the following keys:
-        - data_dir: the root directory of the dataset
-        - transform_args: the arguments for the data preprocessing transforms
-        - num_subjects: the number of subjects to load from the dataset
+        for minibatch in tqdm(minibatches, desc="Preprocessing minibatches"):
+            data = torch.load(minibatch)
+            for unique_id, data_id in tqdm(
+                data.items(), desc="Preprocessing samples in minibatch"
+            ):
+                points = o3d.utility.Vector3dVector(data_id.backscan)
+                data_id.backscan = o3d.geometry.PointCloud(points=points)
+                self.transforms(data_id)
 
-        The cache file is saved using torch.save as a .pt file.
-        """
-        print(f"Saving cache to {self.cache_file}...")
-        try:
-            torch.save(self.data, self.cache_file)
-            with open(self.cache_file.with_suffix(".json"), "w") as f:
-                json.dump(self.cache_dict, f, default=dumper)
-            print("Saved!")
-        except TypeError:
-            print("Error saving cache!")
+            self._save_minibatch(data, cache_folder)
 
     def _split_data(self):
         """Splits the data into training, validation, and test sets according
