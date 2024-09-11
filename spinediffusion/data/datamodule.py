@@ -1,10 +1,11 @@
 import glob
 import json
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 
 import numpy as np
 import open3d as o3d
+import pandas as pd
 import pytorch_lightning as pl
 import torch
 from natsort import natsorted
@@ -12,6 +13,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from torchvision.transforms import v2
 from tqdm import tqdm
 
+from spinediffusion.data.dataclass import SpineSample
 from spinediffusion.data.sl_generator import SLGenerator
 from spinediffusion.utils.hashing import hash_dict
 from spinediffusion.utils.misc import dumper
@@ -51,9 +53,10 @@ class SpineDataModule(pl.LightningDataModule):
     that are exploring the use of 3D backscans as an alternative for the
     diagnosis and monitoring of scoliosis. To learn more about the dataset,
     please refer to the following sources:
-        - Source 1
-        - Source 2
-        - Source 3
+        - Implementation and Investigation of Machine Learning-based Spinal
+        Curvature Estimation Models, Master Thesis, Sandhu, 2023.
+        - Estimating the Spinal Curvature from Back Surface Scans using Deep
+        Learning, Master Thesis, Ruegg, 2023.
     """
 
     def __init__(
@@ -143,6 +146,27 @@ class SpineDataModule(pl.LightningDataModule):
         self.sl_args = sl_args
         self.save_hyperparameters()
 
+    def prepare_data(self):
+        """Method for preparing the data. This method is called by PyTorch Lightning
+        before the data module is set up. It is used to load the data augment it and
+        preprocess it before saving it to disk (optionally in mini-batches).
+        """
+        cache_hash = hash_dict({key: self.__dict__[key] for key in HASH_ARGS})
+        cache_folder = self.cache_dir / f"{cache_hash}"
+
+        if cache_folder.exists() and self.use_cache:
+            print("Using existing cache for this parameter combination.")
+            pass
+        else:
+            if self.use_cache:
+                print("Cache not found for this parameter combination.")
+            elif not self.use_cache:
+                print("Reprocessing data since use_cache attribute is set to False.")
+
+            data = self._load_data()
+
+        return data
+
     def setup(self, stage: Optional[str]):
         """Setup method for the SpineDataModule class. This method is called
         by PyTorch Lightning to setup the data module before training.
@@ -168,101 +192,61 @@ class SpineDataModule(pl.LightningDataModule):
 
         self._split_data()
 
-    def _parse_datapaths(self):
-        """Parses the data paths from the data directory.
-
-        The data directory should contain two subdirectories: one for the backscans
-        and one for the metadata. The backscans should be stored as .ply files and
-        the metadata as .json files. The backscans and metadata files should have
-        the same name, with the only difference being the file extension.
-        """
-        print(f"Parsing data paths from {self.data_dir}...")
-
-        assert self.data_dir.exists(), "Data directory does not exist."
-
-        back_dir = str(self.data_dir / "**" / "*processed.ply")
-        meta_dir = str(self.data_dir / "**" / "*processed.json")
-
-        # iglob is more memory-efficient than glob and allows to use tqdm
-        back_iter = tqdm(glob.iglob(back_dir, recursive=True), desc="Parsing backscans")
-        meta_iter = tqdm(glob.iglob(meta_dir, recursive=True), desc="Parsing metadata")
-
-        # making every path string a Path object is useful for cross-OS compatibility
-        self.dirs_back = [Path(path) for path in natsorted(back_iter)]
-        self.dirs_meta = [Path(path) for path in natsorted(meta_iter)]
-
-    def _exclude_patients(self):
-        """Excludes patients from the dataset based on the provided dictionary."""
-        if self.exclude_patients is None:
-            return
-
-        ex_patients_list = []
-        for key in self.exclude_patients:
-            for id in self.exclude_patients[key]:
-                ex_patients_list.append(f"{key}_{id}")
-
-        self.dirs_back = [
-            path
-            for path in self.dirs_back
-            if not any(patient in str(path) for patient in ex_patients_list)
-        ]
-        self.dirs_meta = [
-            path
-            for path in self.dirs_meta
-            if not any(patient in str(path) for patient in ex_patients_list)
-        ]
-
-    def _check_cache(self):
-        """Checks if a cache exists for the current parameter combination."""
-        print("Checking cache...")
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self.cache_dict = {key: self.__dict__[key] for key in HASH_ARGS}
-        self.cache_file = self.cache_dir / f"{hash_dict(self.cache_dict)}.pt"
-        self.cache_exists = (self.cache_file).exists()
-
     def _load_cache(self):
         """Loads the cache from the cache file."""
         print(f"Loading cache from {self.cache_file}...")
         self.data = torch.load(self.cache_file)
 
-    def _load_data(self):
+    def _load_data(self) -> Dict:
         """Loads both backscan point clouds and metadata from the data directories
         found in _parse_datapaths().
-        """
-        # auxiliary selection for quick testing and debugging
-        self._select_n_subj_per_dataset()
 
-        for back_path, meta_path in tqdm(
-            zip(self.dirs_back, self.dirs_meta),
-            total=len(self.dirs_back),
-            desc="Loading data",
-        ):
-            msg = (
-                f"Backscan and metadata files do not match: {back_path} and {meta_path}"
+        Returns:
+            data (dict): A dictionary containing the loaded data.
+        """
+        print(f"Parsing data paths from {self.data_dir}...")
+        msg = f"Data directory {self.data_dir} does not exist or is inaccessible."
+        assert self.data_dir.exists(), msg
+
+        sample_dir = str(self.data_dir / "**")
+        sample_iter = tqdm(glob.iglob(sample_dir), desc="Parsing sample directories")
+        sample_dirs = [Path(path) for path in natsorted(sample_iter)]
+
+        if self.num_subjects is not None:
+            datasets = [path.name.split("_")[0] for path in sample_dirs]
+            sample_dirs_df = pd.DataFrame({"path": sample_dirs, "dataset": datasets})
+            sample_dirs = (
+                sample_dirs_df.groupby("dataset")
+                .head(self.num_subjects)["path"]
+                .tolist()
             )
-            assert back_path.parent == meta_path.parent, msg
+
+        print(f"Loading data from {self.data_dir}...")
+        data = {}
+        for sample in tqdm(sample_dirs, desc="Loading data"):
+
+            back_path = sample / f"{sample.name}_processed.ply"
+            meta_path = sample / f"{sample.name}_metadata_processed.json"
 
             with open(meta_path, "r") as f:
-                meta_id = json.load(f)
-                unique_id = f"{meta_id['dataset']}_{meta_id['id']}"
-                self.meta[unique_id] = meta_id
-            self.backs[unique_id] = o3d.io.read_point_cloud(str(back_path))
+                meta_sample = json.load(f)
+            back_sample = o3d.io.read_point_cloud(str(back_path))
 
-    def _select_n_subj_per_dataset(self):
-        """Selects the first num_subjects from each dataset for quick testing and debugging."""
-        DATASETS = ["balgrist", "croatian", "italian", "ukbb"]
-        if self.num_subjects is not None:
-            back_paths = []
-            meta_paths = []
-            for dataset in DATASETS:
-                back_paths += [path for path in self.dirs_back if dataset in str(path)][
-                    : self.num_subjects
-                ]
-                meta_paths += [path for path in self.dirs_meta if dataset in str(path)][
-                    : self.num_subjects
-                ]
-            self.dirs_back = back_paths
-            self.dirs_meta = meta_paths
+            if "croatian" in sample.name:
+                pc_type = "formetric"
+            else:
+                pc_type = "pcdicomapp"
+
+            data[sample.name] = SpineSample(
+                backscan=back_sample,
+                special_points={
+                    k: np.asarray(v) for k, v in meta_sample["specialPts"].items()
+                },
+                esl=np.asarray(meta_sample["esl"][pc_type]),
+                isl=np.asarray(meta_sample["isl"][pc_type]),
+            )
+
+        return data
 
     def _reformat_data(self):
         """Reformats the data into a more convenient structure for
